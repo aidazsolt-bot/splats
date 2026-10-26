@@ -7,6 +7,7 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 - [`engines/`](engines/) - CPU, deterministic, no training
 - [`engines_cuda/`](engines_cuda/) - PyTorch + gsplat training (needs NVIDIA CUDA)
 - [`engines_cpu_train/`](engines_cpu_train/) - pure PyTorch training on CPU (quality-first schedule)
+- [`engines_povray/`](engines_povray/) - COLMAP cameras/images/mesh -> POV-Ray scene + renders
 
 ## Usage
 
@@ -43,3 +44,15 @@ python engines/run_blackberry.py --data "$HOME/tmp/blackberry-splats/dataset" --
 ```
 
 Details: [`engines/README.md`](engines/README.md)
+
+### POV-Ray scene from COLMAP
+
+```bash
+python engines_povray/colmap_to_pov.py \
+  --data "$HOME/tmp/blackberry-splats/dataset" \
+  --out povray_out \
+  --mesh engines_out/mesh.ply
+python engines_povray/render_views.py --scene-dir povray_out --indices 0
+```
+
+Details: [`engines_povray/README.md`](engines_povray/README.md)
