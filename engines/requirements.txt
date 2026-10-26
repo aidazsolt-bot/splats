@@ -1,0 +1,5 @@
+numpy
+opencv-python-headless
+open3d
+scipy
+pillow
