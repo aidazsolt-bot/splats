@@ -50,7 +50,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for i in indices:
-        out_png = out_dir / f"cam_{i:03d}.png"
+        out_png = (out_dir / f"cam_{i:03d}.png").resolve()
+        out_png.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
             povray_bin,
             f"+W{args.width}",
@@ -62,7 +63,7 @@ def main() -> None:
             str(pov.name),
         ]
         print(" ".join(cmd))
-        subprocess.run(cmd, cwd=str(scene_dir), check=True)
+        subprocess.run(cmd, cwd=str(scene_dir.resolve()), check=True)
         print(f"Wrote {out_png}")
 
 
