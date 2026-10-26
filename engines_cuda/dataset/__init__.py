@@ -1,0 +1,1 @@
+# COLMAP RGBA dataset package.
