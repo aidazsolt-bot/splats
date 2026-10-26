@@ -6,8 +6,14 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
 - [`engines/`](engines/) - CPU, deterministic, no training
 - [`engines_cuda/`](engines_cuda/) - PyTorch + gsplat training (photorealistic; needs NVIDIA CUDA)
+- [`colab/`](colab/) - Google Colab notebook (CUDA GPU in the cloud)
 
 ## Usage
+
+### Google Colab
+
+Open [`colab/blackberry_train_colab.ipynb`](colab/blackberry_train_colab.ipynb) with a **GPU** runtime.
+Uses `engines_cuda` + gsplat. PyTorch3D is optional (meshes only) — see notebook / [`colab/README.md`](colab/README.md).
 
 ### CUDA / Torch training (GPU machine)
 
