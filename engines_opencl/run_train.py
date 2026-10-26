@@ -54,6 +54,12 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=5000)
     ap.add_argument("--data-factor", type=int, default=4)
     ap.add_argument("--device-index", type=int, default=None)
+    ap.add_argument(
+        "--prefer",
+        type=str,
+        default="nvidia",
+        help="OpenCL device name substring (default: nvidia). Use '' for auto.",
+    )
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
@@ -75,13 +81,19 @@ def main() -> None:
     # Smoke keeps a tiny draw budget so CPU fallback finishes quickly.
 
     cl = None
+    prefer = args.prefer.strip() or None
     try:
-        cl = OpenCLGaussianRasterizer(device_index=args.device_index)
+        cl = OpenCLGaussianRasterizer(device_index=args.device_index, prefer=prefer)
+        print(
+            "Note: training uses CPU differentiable rasterizer; "
+            "OpenCL device is reserved for no-grad preview paths."
+        )
     except Exception as e:
         print(f"OpenCL init failed: {e}")
         if not args.cpu_fallback:
             raise SystemExit(
-                "No OpenCL device. On Intel Arc install compute runtime, or pass --cpu-fallback."
+                "No OpenCL device. Pass --prefer nvidia or --device-index 1, "
+                "or --cpu-fallback for pure CPU training."
             )
         print("Using CPU rasterizer fallback for the whole step")
 

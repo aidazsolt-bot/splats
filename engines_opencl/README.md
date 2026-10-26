@@ -19,13 +19,22 @@ python engines_opencl/list_devices.py
 # smoke (needs OpenCL device) or --cpu-fallback
 python engines_opencl/run_train.py --smoke --out opencl_out --cpu-fallback
 
-# longer run on Arc / AMD OpenCL
-python engines_opencl/run_train.py \
-  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
-  --out opencl_out \
-  --data-factor 4 \
-  --steps 5000
+# Windows / dual GPU: force NVIDIA (not Intel UHD)
+python engines_opencl/run_train.py --prefer nvidia \
+  --data X:\blackberry-splats\dataset --out opencl_out --steps 5000
+
+# longer run
+python engines_opencl/run_train.py --prefer nvidia \
+  --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
+  --out opencl_out --data-factor 4 --steps 5000
 ```
+
+Training uses the **CPU differentiable** rasterizer (needed for autograd). OpenCL device
+selection matters for ICD probing / preview. If Intel UHD appears despite index 1,
+pull this fix and use `--prefer nvidia` (binds the NVIDIA platform explicitly).
+
+**NVIDIA driver too old for PyTorch CUDA:** update the driver, or keep using this
+OpenCL/CPU path (no CUDA required for training here).
 
 ## Drivers
 

@@ -1,12 +1,9 @@
-"""Torch autograd wrapper: OpenCL forward, CPU differentiable backward."""
+"""Torch raster helpers: OpenCL for inference, CPU for differentiable training."""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -25,7 +22,7 @@ def _cpu_raster_mod():
 
 
 class HybridOpenCLRaster(torch.autograd.Function):
-    """Forward via OpenCL (fast on Intel Arc / AMD). Backward via CPU torch path."""
+    """OpenCL forward for inference-style calls; backward uses CPU with enable_grad."""
 
     @staticmethod
     def forward(
@@ -45,7 +42,6 @@ class HybridOpenCLRaster(torch.autograd.Function):
         max_gaussians: int,
         max_radius: int,
     ):
-        ctx.cl = cl_rasterizer
         ctx.width = width
         ctx.height = height
         ctx.sh_degree = sh_degree
@@ -70,9 +66,7 @@ class HybridOpenCLRaster(torch.autograd.Function):
             )
             idx = valid.nonzero(as_tuple=False).squeeze(-1)
             if idx.numel() == 0:
-                rgb = means.new_zeros(height, width, 3)
-                alph = means.new_zeros(height, width)
-                return rgb, alph
+                return means.new_zeros(height, width, 3), means.new_zeros(height, width)
             order = torch.argsort(depths[idx])
             idx = idx[order]
             if idx.numel() > max_gaussians:
@@ -106,39 +100,55 @@ class HybridOpenCLRaster(torch.autograd.Function):
             viewmat,
             K,
         ) = ctx.saved_tensors
-        # Recompute with CPU differentiable rasterizer to obtain grads
-        means_ = means.detach().requires_grad_(True)
-        scales_ = scales_log.detach().requires_grad_(True)
-        quats_ = quats.detach().requires_grad_(True)
-        opac_ = opacities_logit.detach().requires_grad_(True)
-        dc_ = colors_dc.detach().requires_grad_(True)
-        rest_ = colors_rest.detach().requires_grad_(True) if colors_rest is not None else None
 
-        cpu_r = _cpu_raster_mod()
-        rgb, alph = cpu_r.rasterize_gaussians_cpu(
-            means_,
-            scales_,
-            quats_,
-            opac_,
-            dc_,
-            rest_,
-            viewmat.detach(),
-            K.detach(),
-            ctx.width,
-            ctx.height,
-            sh_degree=ctx.sh_degree,
-            max_gaussians=ctx.max_gaussians,
-            max_radius=ctx.max_radius,
-        )
-        loss = (rgb * grad_rgb).sum() + (alph * grad_a).sum()
-        grads = torch.autograd.grad(
-            loss,
-            [means_, scales_, quats_, opac_, dc_] + ([rest_] if rest_ is not None else []),
-            retain_graph=False,
-            allow_unused=True,
-        )
-        g_means, g_scales, g_quats, g_opac, g_dc = grads[:5]
-        g_rest = grads[5] if rest_ is not None else None
+        # Nested autograd during backward requires enable_grad()
+        with torch.enable_grad():
+            means_ = means.detach().requires_grad_(True)
+            scales_ = scales_log.detach().requires_grad_(True)
+            quats_ = quats.detach().requires_grad_(True)
+            opac_ = opacities_logit.detach().requires_grad_(True)
+            dc_ = colors_dc.detach().requires_grad_(True)
+            rest_ = (
+                colors_rest.detach().requires_grad_(True) if colors_rest is not None else None
+            )
+            cpu_r = _cpu_raster_mod()
+            rgb, alph = cpu_r.rasterize_gaussians_cpu(
+                means_,
+                scales_,
+                quats_,
+                opac_,
+                dc_,
+                rest_,
+                viewmat.detach(),
+                K.detach(),
+                ctx.width,
+                ctx.height,
+                sh_degree=ctx.sh_degree,
+                max_gaussians=ctx.max_gaussians,
+                max_radius=ctx.max_radius,
+            )
+            gr = grad_rgb if grad_rgb is not None else torch.zeros_like(rgb)
+            ga = grad_a if grad_a is not None else torch.zeros_like(alph)
+            loss = (rgb * gr).sum() + (alph * ga).sum()
+            if not loss.requires_grad:
+                zeros = [torch.zeros_like(means_)] * 5
+                g_rest = torch.zeros_like(rest_) if rest_ is not None else None
+                return (*zeros, g_rest, None, None, None, None, None, None, None, None)
+
+            inputs = [means_, scales_, quats_, opac_, dc_]
+            if rest_ is not None:
+                inputs.append(rest_)
+            grads = torch.autograd.grad(loss, inputs, retain_graph=False, allow_unused=True)
+
+        def _g(t, ref):
+            return t if t is not None else torch.zeros_like(ref)
+
+        g_means = _g(grads[0], means_)
+        g_scales = _g(grads[1], scales_)
+        g_quats = _g(grads[2], quats_)
+        g_opac = _g(grads[3], opac_)
+        g_dc = _g(grads[4], dc_)
+        g_rest = _g(grads[5], rest_) if rest_ is not None else None
         return (
             g_means,
             g_scales,
@@ -173,6 +183,31 @@ def rasterize_hybrid(
     max_gaussians: int = 25000,
     max_radius: int = 28,
 ):
+    """During training (params require grad) use CPU differentiable rasterizer.
+
+    OpenCL forward is used only when no grad is needed (faster preview).
+    """
+    needs_grad = any(
+        (t is not None and getattr(t, "requires_grad", False))
+        for t in (means, scales_log, quats, opacities_logit, colors_dc, colors_rest)
+    )
+    if needs_grad or cl_rasterizer is None:
+        cpu_r = _cpu_raster_mod()
+        return cpu_r.rasterize_gaussians_cpu(
+            means,
+            scales_log,
+            quats,
+            opacities_logit,
+            colors_dc,
+            colors_rest,
+            viewmat,
+            K,
+            width,
+            height,
+            sh_degree=sh_degree,
+            max_gaussians=max_gaussians,
+            max_radius=max_radius,
+        )
     return HybridOpenCLRaster.apply(
         means,
         scales_log,

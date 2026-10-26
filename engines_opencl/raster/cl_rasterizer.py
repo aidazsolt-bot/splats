@@ -13,13 +13,23 @@ _CL_SRC = (Path(__file__).resolve().parents[1] / "cl" / "rasterize.cl").read_tex
 
 
 class OpenCLGaussianRasterizer:
-    def __init__(self, device_index: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        device_index: Optional[int] = None,
+        prefer: Optional[str] = None,
+    ) -> None:
         import pyopencl as cl
 
         self.cl = cl
-        self.ctx, self.queue, self.device = make_context(device_index=device_index)
+        self.ctx, self.queue, self.device, self.device_index = make_context(
+            device_index=device_index,
+            prefer=prefer,
+        )
         self.prg = cl.Program(self.ctx, _CL_SRC).build()
-        print(f"OpenCL device: {self.device.name} ({cl.device_type.to_string(self.device.type)})")
+        print(
+            f"OpenCL device[{self.device_index}]: {self.device.name} "
+            f"({cl.device_type.to_string(self.device.type)})"
+        )
 
     def rasterize(
         self,
