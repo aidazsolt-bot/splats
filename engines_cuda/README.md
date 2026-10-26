@@ -20,7 +20,8 @@ On a GPU machine:
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
-python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --max-steps 30000
+python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
+# Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.

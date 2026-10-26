@@ -25,7 +25,8 @@ using closed-form geometry and photometry. No Adam / Postshot / densify-train lo
 source "$HOME/tmp/bn_engines_venv/bin/activate"
 cd /usr/src/TestAdnroidNDKSDK/danybitte.splats.git/engines
 python run_blackberry.py \
-  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
+# Windows: --data X:\blackberry-splats\dataset \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_out" \
   --downscale 4 \
   --densify-rounds 1

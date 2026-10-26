@@ -9,6 +9,8 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
 ## Usage
 
+**Dataset `--data`:** Linux `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` · Windows `X:\blackberry-splats\dataset` · Colab `MyDrive/blackberry-splats/dataset`
+
 ### CUDA / Torch training (GPU machine)
 
 ```bash
