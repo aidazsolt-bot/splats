@@ -3,9 +3,16 @@
 Learned Gaussian splats via gradient descent (same family as Postshot / Inria 3DGS),
 with **alpha-masked** photometric loss for cut-out macro subjects (Blackberry RGBA).
 
-Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUDA box.
+Requires **NVIDIA CUDA**. Lab hosts without a GPU cannot run training locally.
+
+**No local NVIDIA?** Use Google Colab: [`../colab/README.md`](../colab/README.md) and
+[`../colab/blackberry_train_colab.ipynb`](../colab/blackberry_train_colab.ipynb)
+(same `engines_cuda` + gsplat stack on a cloud T4/L4/A100).
+
+PyTorch3D is unrelated to this trainer (optional mesh tools only).
 
 ## Why this vs `engines/` (no-train)
+
 
 | | `engines/` | `engines_cuda/` |
 |--|--|--|
@@ -46,7 +53,8 @@ python engines_cuda/run_train.py \
 Smoke test on GPU:
 
 ```bash
-python run_train.py --smoke --data-factor 4 --out /tmp/gs_smoke
+python engines_cuda/run_train.py --smoke --data-factor 4 \
+  --out "$HOME/tmp/gs_smoke"
 ```
 
 Outputs:
