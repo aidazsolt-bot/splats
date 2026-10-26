@@ -1,0 +1,8 @@
+# CPU training - no CUDA wheels required
+torch>=2.1.0
+numpy
+pillow
+scipy
+tqdm
+lpips
+open3d

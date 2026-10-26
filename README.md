@@ -2,26 +2,16 @@
 
 Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
-## Which path?
+## Pipelines
 
-| Goal | Path | Needs |
-|------|------|--------|
-| Photoreal splat, no local NVIDIA | [`colab/`](colab/) | Google Colab GPU |
-| Photoreal splat on NVIDIA box | [`engines_cuda/`](engines_cuda/) | CUDA + gsplat |
-| Fast geometric PLY + mesh | [`engines/`](engines/) | CPU only |
-| Train without CUDA (slow) | `engines_cpu_train/` | CPU, days+ |
-| Non-NVIDIA GPU experiment | `engines_opencl/` | OpenCL ICD |
-| Classic raytrace preview | `engines_povray/` | POV-Ray |
+- [`engines/`](engines/) - CPU, deterministic, no training
+- [`engines_cuda/`](engines_cuda/) - PyTorch + gsplat training (photorealistic; needs NVIDIA CUDA)
+- [`colab/`](colab/) - Google Colab notebook (CUDA GPU in the cloud; same stack as `engines_cuda`)
+- [`engines_cpu_train/`](engines_cpu_train/) - pure PyTorch training on CPU (quality-first; slow)
+- [`engines_opencl/`](engines_opencl/) - OpenCL forward rasterizer (Intel Arc / AMD), hybrid train
+- [`engines_povray/`](engines_povray/) - COLMAP cameras/images/mesh -> POV-Ray scene + renders
 
-**Colab note:** Runtimes have NVIDIA CUDA. Training uses **gsplat / `engines_cuda`**, not PyTorch3D. PyTorch3D can be installed for mesh experiments but is not a 3DGS trainer. Details: [`colab/README.md`](colab/README.md).
-
-Sibling feature branches that still carry the extra trees (merge later if needed):
-
-- `feature/cpu-train-quality` - `engines_cpu_train/`
-- `feature/opencl-train` - `engines_opencl/` (+ cpu/povray)
-- `feature/povray-scene` - `engines_povray/`
-
-This branch (`feature/colab-train`) focuses on Colab + `engines_cuda` + deterministic `engines/`.
+**Colab / PyTorch3D:** Colab has NVIDIA CUDA. Use **gsplat** via `engines_cuda` for 3DGS. PyTorch3D is optional (meshes only), not a splat trainer - see [`colab/README.md`](colab/README.md).
 
 ## Dataset
 
@@ -74,17 +64,37 @@ python engines/run_blackberry.py \
 
 Details: [`engines/README.md`](engines/README.md)
 
-### Other pipelines (other branches)
+### CPU quality training (no CUDA)
 
 ```bash
-# CPU quality train - feature/cpu-train-quality
-python engines_cpu_train/run_train.py --data ... --out ...
+pip install -r engines_cpu_train/requirements.txt
+python engines_cpu_train/run_train.py \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
+```
 
-# OpenCL hybrid - feature/opencl-train
+Smoke: `python engines_cpu_train/run_train.py --smoke`. Details: [`engines_cpu_train/README.md`](engines_cpu_train/README.md).
+
+### OpenCL training (Intel Arc / non-CUDA GPUs)
+
+```bash
+pip install -r engines_opencl/requirements.txt
 python engines_opencl/list_devices.py
-python engines_opencl/run_train.py --data ... --out opencl_out
+python engines_opencl/run_train.py \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out opencl_out
+```
 
-# POV-Ray - feature/povray-scene
-python engines_povray/colmap_to_pov.py --data ... --out povray_out --mesh engines_out/mesh.ply
+Use `--cpu-fallback` if no OpenCL ICD is installed. Details: [`engines_opencl/README.md`](engines_opencl/README.md).
+
+### POV-Ray scene from COLMAP
+
+```bash
+python engines_povray/colmap_to_pov.py \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out povray_out \
+  --mesh engines_out/mesh.ply
 python engines_povray/render_views.py --scene-dir povray_out --indices 0
 ```
+
+Details: [`engines_povray/README.md`](engines_povray/README.md).
