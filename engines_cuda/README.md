@@ -61,13 +61,16 @@ In the installer, choose **Custom** (not Express):
   older bundled driver; installing it can downgrade a newer Game Ready / Studio driver
 - Skip: Demo Suite, Documentation, Nsight extras you do not need, samples
 
-Notes from Windows installs:
+Notes from Windows installs (painful but real):
 
-- Even if you set the install root to **D:**, expect **hundreds of MB on C:**
-  (often 500+ MB) for ProgramData / shortcuts / Visual Studio integration / residual
-  components - budget free space on the system drive
-- Prefer the network installer so you can deselect the driver and bulky options;
-  the ~3 GB local package pulls far more by default
+- The UI **install path on D:** does **not** keep C: small. NVIDIA still parks a large
+  chunk on the system drive (Program Files, ProgramData, VS integration, redistributables).
+  Reports: **~5–6 GB free needed on C:** even when "installing to D:" - free that space
+  or the installer refuses / fails mid-way
+- Prefer the network installer + Custom so you can **deselect Display Driver** and demos;
+  the local ~3 GB package is worse, not better for disk
+- If C: cannot spare ~6 GB: skip local Toolkit and use **Google Colab**
+  ([`../colab/`](../colab/)) or another machine with room for `nvcc`
 
 After install, **new** PowerShell:
 
