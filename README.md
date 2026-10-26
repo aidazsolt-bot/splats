@@ -5,9 +5,21 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 ## Pipelines
 
 - [`engines/`](engines/) - CPU, deterministic, no training
-- [`engines_cuda/`](engines_cuda/) - PyTorch + gsplat training (photorealistic; needs NVIDIA CUDA)
+- [`engines_cuda/`](engines_cuda/) - PyTorch + gsplat training (needs NVIDIA CUDA)
+- [`engines_cpu_train/`](engines_cpu_train/) - pure PyTorch training on CPU (quality-first schedule)
 
 ## Usage
+
+### CPU quality training (no CUDA)
+
+```bash
+pip install -r engines_cpu_train/requirements.txt
+python engines_cpu_train/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --out "$HOME/tmp/blackberry-splats/engines_cpu_train_out"
+```
+
+Smoke test: `python engines_cpu_train/run_train.py --smoke`
+
+Details: [`engines_cpu_train/README.md`](engines_cpu_train/README.md)
 
 ### CUDA / Torch training (GPU machine)
 
