@@ -13,16 +13,19 @@ Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUD
 | Runtime | CPU minutes | GPU minutes..hours |
 | Quality | geometric / textured mesh | photorealistic splat (SH view-dependence) |
 
-## Install (GPU machine)
+## Usage
+
+On a GPU machine:
 
 ```bash
-python -m venv ~/tmp/bn_cuda_venv
-source ~/tmp/bn_cuda_venv/bin/activate
-pip install torch --index-url https://download.pytorch.org/whl/cu121   # match your CUDA
+pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
+python engines_cuda/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --max-steps 30000
 ```
 
-Confirm:
+Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
+
+Confirm CUDA before a long run:
 
 ```bash
 python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(torch.cuda.get_device_name(0))"
@@ -33,8 +36,7 @@ python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(
 Dataset layout (COLMAP text + `images/*.png` RGBA), e.g. `$HOME/tmp/blackberry-splats/dataset`.
 
 ```bash
-cd engines_cuda
-python run_train.py \
+python engines_cuda/run_train.py \
   --data "$HOME/tmp/blackberry-splats/dataset" \
   --out "$HOME/tmp/blackberry-splats/engines_cuda_out" \
   --data-factor 2 \
