@@ -57,6 +57,18 @@ python engines_cuda/run_train.py --smoke --data-factor 4 \
   --out "$HOME/tmp/gs_smoke"
 ```
 
+Resume after interrupt (same flags + `--out`):
+
+```bash
+python engines_cuda/run_train.py --resume \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out" \
+  --data-factor 2 --max-steps 30000
+```
+
+`ckpt_latest.pt` is written every `--ckpt-every` steps (default 500) and on Ctrl-C.
+Settings must match `cfg.json` in `--out`.
+
 Outputs:
 
 - `splat_07000.ply`, `splat_15000.ply`, `splat_30000.ply` - viewer-compatible

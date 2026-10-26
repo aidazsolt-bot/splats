@@ -27,9 +27,15 @@ python engines_cpu_train/run_train.py \
 
 # short verification
 python engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"
+
+# resume after interrupt (same --out / schedule flags)
+python engines_cpu_train/run_train.py --resume \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 ```
 
-Outputs: `splat_final.ply`, per-stage PLY/ckpt, `train_meta.json`.
+Outputs: `splat_final.ply`, per-stage PLY/ckpt, `ckpt_latest.pt`, `train_meta.json`.
+`--resume` needs matching settings vs `cfg.json` in `--out`. Ctrl-C also writes `ckpt_latest.pt`.
 
 Reuses COLMAP+RGBA loader and PLY export from `engines_cuda/` (same formats).
 

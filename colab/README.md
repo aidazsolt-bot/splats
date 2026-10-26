@@ -48,6 +48,11 @@ Same layout as `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` on the lab
 
 Outputs default under `MyDrive/blackberry-splats/engines_cuda_out/` (notebook `OUT`).
 
+## Resume
+
+After a disconnect, re-run the train cell with the same `DATA` / `OUT` / flags and `RESUME = True`
+(`--resume`). Loads `ckpt_latest.pt` from Drive; settings must match `cfg.json`.
+
 ## Limits
 
 - Free Colab sessions can disconnect; prefer Drive paths for checkpoints.

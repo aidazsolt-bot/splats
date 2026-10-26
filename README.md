@@ -49,7 +49,7 @@ python engines_cuda/run_train.py \
   --max-steps 30000
 ```
 
-Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit. Optional: `--data-factor 2`, `--smoke`.
+Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit. Optional: `--data-factor 2`, `--smoke`, `--resume` (same settings + `--out`).
 
 Details: [`engines_cuda/README.md`](engines_cuda/README.md)
 
@@ -73,7 +73,7 @@ python engines_cpu_train/run_train.py \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 ```
 
-Smoke: `python engines_cpu_train/run_train.py --smoke`. Details: [`engines_cpu_train/README.md`](engines_cpu_train/README.md).
+Smoke: `python engines_cpu_train/run_train.py --smoke`. Resume: add `--resume` with the same flags. Details: [`engines_cpu_train/README.md`](engines_cpu_train/README.md).
 
 ### OpenCL training (Intel Arc / non-CUDA GPUs)
 
@@ -83,6 +83,7 @@ python engines_opencl/list_devices.py
 python engines_opencl/run_train.py \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out opencl_out
+# after abort: same command + --resume
 ```
 
 Use `--cpu-fallback` if no OpenCL ICD is installed. Details: [`engines_opencl/README.md`](engines_opencl/README.md).

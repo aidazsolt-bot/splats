@@ -26,6 +26,28 @@ from export.ply import export_gsplat_ply  # noqa: E402
 from raster.diff_gauss_cpu import rasterize_gaussians_cpu  # noqa: E402
 from train.losses import OptionalLPIPS, alpha_bce, l1_masked, ssim_loss  # noqa: E402
 
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from engines_common.resume import (  # noqa: E402
+    assert_same_settings,
+    find_checkpoint,
+    load_checkpoint,
+    save_checkpoint,
+    tensor_to_param,
+    write_cfg,
+)
+
+CPU_RESUME_KEYS = (
+    "data",
+    "stages",
+    "test_every",
+    "ssim_lambda",
+    "lpips_lambda",
+    "alpha_lambda",
+    "seed",
+    "sh_degree_max",
+)
+
 
 @dataclass
 class Stage:
@@ -70,6 +92,8 @@ class TrainConfig:
     device: str = "cpu"
     sh_degree_max: int = 2
     save_every_stage: bool = True
+    resume: bool = False
+    ckpt_every: int = 50
 
 
 class GaussianModel:
@@ -146,6 +170,52 @@ def _densify_prune(model, optimizers, grad_means, cfg: TrainConfig) -> None:
     print(f"  densify/prune {n0} -> {model.means.shape[0]}")
 
 
+def _cfg_dump(cfg: TrainConfig) -> dict:
+    d = asdict(cfg)
+    d["stages"] = [asdict(s) for s in cfg.stages]
+    return d
+
+
+def _pack_cpu_ckpt(
+    cfg: TrainConfig,
+    model: GaussianModel,
+    *,
+    stage_i: int,
+    local_step: int,
+    global_step: int,
+    optimizers: dict,
+) -> dict:
+    return {
+        "pipeline": "engines_cpu_train",
+        "stage_i": stage_i,
+        "local_step": local_step,
+        "global_step": global_step,
+        "step": global_step,
+        "means": model.means.detach().cpu(),
+        "scales": model.scales.detach().cpu(),
+        "quats": model.quats.detach().cpu(),
+        "opacities": model.opacities.detach().cpu(),
+        "colors_dc": model.colors_dc.detach().cpu(),
+        "colors_rest": model.colors_rest.detach().cpu(),
+        "scene_scale": float(model.scene_scale),
+        "optimizers": {k: opt.state_dict() for k, opt in optimizers.items()},
+        "cfg": _cfg_dump(cfg),
+    }
+
+
+def _load_model_from_ckpt(saved: dict, device: torch.device, sh_degree_max: int) -> GaussianModel:
+    model = GaussianModel.__new__(GaussianModel)
+    model.sh_degree_max = sh_degree_max
+    model.means = tensor_to_param(saved["means"], device)
+    model.scales = tensor_to_param(saved["scales"], device)
+    model.quats = tensor_to_param(saved["quats"], device)
+    model.opacities = tensor_to_param(saved["opacities"], device)
+    model.colors_dc = tensor_to_param(saved["colors_dc"], device)
+    model.colors_rest = tensor_to_param(saved["colors_rest"], device)
+    model.scene_scale = float(saved.get("scene_scale", 1.0))
+    return model
+
+
 def train(cfg: TrainConfig) -> Path:
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
@@ -157,15 +227,48 @@ def train(cfg: TrainConfig) -> Path:
 
     out = Path(cfg.out)
     out.mkdir(parents=True, exist_ok=True)
-    cfg_dump = asdict(cfg)
-    cfg_dump["stages"] = [asdict(s) for s in cfg.stages]
-    (out / "cfg.json").write_text(json.dumps(cfg_dump, indent=2) + "\n", encoding="utf-8")
+    cfg_dump = _cfg_dump(cfg)
 
-    # Init from full-res COLMAP points (factor only affects images)
-    probe = ColmapRGBADataset(Path(cfg.data), data_factor=8, split="train", test_every=cfg.test_every)
-    init = init_gaussians_from_points3d(probe.points, device=device, sh_degree=cfg.sh_degree_max)
-    model = GaussianModel(init, sh_degree_max=cfg.sh_degree_max)
-    optimizers = _optimizers(model, cfg)
+    resume_stage_i = 0
+    resume_local_step = 0
+    global_step = 0
+
+    if cfg.resume:
+        saved = load_checkpoint(find_checkpoint(out), map_location="cpu")
+        saved_cfg = saved.get("cfg")
+        if saved_cfg is None:
+            from engines_common.resume import load_cfg
+
+            saved_cfg = load_cfg(out)
+        assert_same_settings(saved_cfg, cfg_dump, CPU_RESUME_KEYS)
+        model = _load_model_from_ckpt(saved, device, cfg.sh_degree_max)
+        optimizers = _optimizers(model, cfg)
+        opt_state = saved.get("optimizers")
+        if opt_state:
+            for k, opt in optimizers.items():
+                if k in opt_state:
+                    try:
+                        opt.load_state_dict(opt_state[k])
+                    except Exception as e:
+                        print(f"  warn: optimizer[{k}] state skipped ({e})")
+        resume_stage_i = int(saved.get("stage_i", 0))
+        resume_local_step = int(saved.get("local_step", 0))
+        global_step = int(saved.get("global_step", 0))
+        print(
+            f"Resume stage={resume_stage_i + 1} local_step={resume_local_step} "
+            f"gstep={global_step} n={model.means.shape[0]}"
+        )
+    else:
+        write_cfg(out, cfg_dump)
+        probe = ColmapRGBADataset(
+            Path(cfg.data), data_factor=8, split="train", test_every=cfg.test_every
+        )
+        init = init_gaussians_from_points3d(
+            probe.points, device=device, sh_degree=cfg.sh_degree_max
+        )
+        model = GaussianModel(init, sh_degree_max=cfg.sh_degree_max)
+        optimizers = _optimizers(model, cfg)
+
     lpips = OptionalLPIPS()
     if lpips.available:
         print("LPIPS enabled (perceptual loss)")
@@ -173,124 +276,161 @@ def train(cfg: TrainConfig) -> Path:
         print("LPIPS not installed - continuing with L1+SSIM only (pip install lpips)")
 
     t0 = time.time()
-    global_step = 0
     total_steps = sum(s.steps for s in cfg.stages)
+    stage_i = resume_stage_i
+    local_step = resume_local_step
 
-    for stage_i, stage in enumerate(cfg.stages):
-        print(
-            f"=== Stage {stage_i+1}/{len(cfg.stages)}: factor={stage.data_factor} "
-            f"steps={stage.steps} sh<={stage.sh_degree} draw<={stage.max_gaussians_draw}"
-        )
-        train_ds = ColmapRGBADataset(
-            Path(cfg.data),
-            data_factor=stage.data_factor,
-            split="train",
-            test_every=cfg.test_every,
-        )
-        densify_until = int(stage.steps * cfg.densify_until_frac)
-        grad_accum = torch.zeros_like(model.means)
-        grad_count = torch.zeros(model.means.shape[0], device=device)
-
-        for local_step in range(1, stage.steps + 1):
-            global_step += 1
-            sample = train_ds[random.randrange(len(train_ds))]
-            image = sample["image"].to(device)
-            alpha = sample["alpha"].to(device)
-            K = sample["K"].to(device)
-            viewmat = sample["viewmat"].to(device)
-            h, w = int(sample["height"]), int(sample["width"])
-
-            model.means.requires_grad_(True)
-            rgb, alph = rasterize_gaussians_cpu(
-                model.means,
-                model.scales,
-                model.quats,
-                model.opacities,
-                model.colors_dc,
-                model.colors_rest,
-                viewmat,
-                K,
-                w,
-                h,
-                sh_degree=stage.sh_degree,
-                max_gaussians=stage.max_gaussians_draw,
-                max_radius=stage.max_radius,
+    try:
+        for stage_i, stage in enumerate(cfg.stages):
+            if stage_i < resume_stage_i:
+                continue
+            start_local = resume_local_step + 1 if stage_i == resume_stage_i else 1
+            if start_local > stage.steps:
+                continue
+            print(
+                f"=== Stage {stage_i+1}/{len(cfg.stages)}: factor={stage.data_factor} "
+                f"steps={start_local}..{stage.steps} sh<={stage.sh_degree} "
+                f"draw<={stage.max_gaussians_draw}"
             )
+            train_ds = ColmapRGBADataset(
+                Path(cfg.data),
+                data_factor=stage.data_factor,
+                split="train",
+                test_every=cfg.test_every,
+            )
+            densify_until = int(stage.steps * cfg.densify_until_frac)
+            grad_accum = torch.zeros_like(model.means)
+            grad_count = torch.zeros(model.means.shape[0], device=device)
 
-            if cfg.random_bkgd:
-                bkgd = torch.rand(1, 1, 3, device=device)
-            else:
-                bkgd = torch.zeros(1, 1, 3, device=device)
-            gt = image * alpha[..., None] + bkgd * (1.0 - alpha[..., None])
-            pred = rgb * alph[..., None] + bkgd * (1.0 - alph[..., None])
-            mask = (alpha > cfg.alpha_thresh).float()
+            for local_step in range(start_local, stage.steps + 1):
+                global_step += 1
+                sample = train_ds[random.randrange(len(train_ds))]
+                image = sample["image"].to(device)
+                alpha = sample["alpha"].to(device)
+                K = sample["K"].to(device)
+                viewmat = sample["viewmat"].to(device)
+                h, w = int(sample["height"]), int(sample["width"])
 
-            loss_l1 = l1_masked(pred, gt, mask)
-            loss_s = ssim_loss(pred, gt, mask)
-            loss_a = alpha_bce(alph, alpha)
-            loss = (1.0 - cfg.ssim_lambda) * loss_l1 + cfg.ssim_lambda * loss_s
-            loss = loss + cfg.alpha_lambda * loss_a
-            if cfg.lpips_lambda > 0 and lpips.available and local_step % 2 == 0:
-                loss = loss + cfg.lpips_lambda * lpips(pred, gt, mask)
-            if cfg.scale_reg > 0:
-                loss = loss + cfg.scale_reg * torch.exp(model.scales).mean()
-
-            for opt in optimizers.values():
-                opt.zero_grad(set_to_none=True)
-            loss.backward()
-            if model.means.grad is not None:
-                g = model.means.grad.detach()
-                if grad_accum.shape[0] != g.shape[0]:
-                    grad_accum = torch.zeros_like(g)
-                    grad_count = torch.zeros(g.shape[0], device=device)
-                grad_accum += g.abs()
-                grad_count += 1
-            for opt in optimizers.values():
-                opt.step()
-
-            if (
-                local_step <= densify_until
-                and cfg.densify_every > 0
-                and local_step % cfg.densify_every == 0
-            ):
-                avg = grad_accum / grad_count.clamp_min(1).unsqueeze(-1)
-                _densify_prune(model, optimizers, avg, cfg)
-                grad_accum = torch.zeros_like(model.means)
-                grad_count = torch.zeros(model.means.shape[0], device=device)
-
-            if local_step % 50 == 0 or local_step == 1:
-                print(
-                    f"gstep={global_step}/{total_steps} stage={stage_i+1} "
-                    f"loc={local_step}/{stage.steps} loss={loss.item():.4f} "
-                    f"l1={loss_l1.item():.4f} n={model.means.shape[0]} "
-                    f"({time.time()-t0:.0f}s)"
+                model.means.requires_grad_(True)
+                rgb, alph = rasterize_gaussians_cpu(
+                    model.means,
+                    model.scales,
+                    model.quats,
+                    model.opacities,
+                    model.colors_dc,
+                    model.colors_rest,
+                    viewmat,
+                    K,
+                    w,
+                    h,
+                    sh_degree=stage.sh_degree,
+                    max_gaussians=stage.max_gaussians_draw,
+                    max_radius=stage.max_radius,
                 )
 
-        if cfg.save_every_stage:
-            ply = out / f"splat_stage{stage_i+1}_factor{stage.data_factor}.ply"
-            export_gsplat_ply(
-                ply,
-                model.means,
-                model.scales,
-                F.normalize(model.quats, dim=-1),
-                model.opacities,
-                model.colors_dc,
-                model.colors_rest,
-            )
-            torch.save(
-                {
-                    "means": model.means.detach().cpu(),
-                    "scales": model.scales.detach().cpu(),
-                    "quats": model.quats.detach().cpu(),
-                    "opacities": model.opacities.detach().cpu(),
-                    "colors_dc": model.colors_dc.detach().cpu(),
-                    "colors_rest": model.colors_rest.detach().cpu(),
-                    "cfg": cfg_dump,
-                    "global_step": global_step,
-                },
-                out / f"ckpt_stage{stage_i+1}.pt",
-            )
-            print(f"  saved {ply}")
+                if cfg.random_bkgd:
+                    bkgd = torch.rand(1, 1, 3, device=device)
+                else:
+                    bkgd = torch.zeros(1, 1, 3, device=device)
+                gt = image * alpha[..., None] + bkgd * (1.0 - alpha[..., None])
+                pred = rgb * alph[..., None] + bkgd * (1.0 - alph[..., None])
+                mask = (alpha > cfg.alpha_thresh).float()
+
+                loss_l1 = l1_masked(pred, gt, mask)
+                loss_s = ssim_loss(pred, gt, mask)
+                loss_a = alpha_bce(alph, alpha)
+                loss = (1.0 - cfg.ssim_lambda) * loss_l1 + cfg.ssim_lambda * loss_s
+                loss = loss + cfg.alpha_lambda * loss_a
+                if cfg.lpips_lambda > 0 and lpips.available and local_step % 2 == 0:
+                    loss = loss + cfg.lpips_lambda * lpips(pred, gt, mask)
+                if cfg.scale_reg > 0:
+                    loss = loss + cfg.scale_reg * torch.exp(model.scales).mean()
+
+                for opt in optimizers.values():
+                    opt.zero_grad(set_to_none=True)
+                loss.backward()
+                if model.means.grad is not None:
+                    g = model.means.grad.detach()
+                    if grad_accum.shape[0] != g.shape[0]:
+                        grad_accum = torch.zeros_like(g)
+                        grad_count = torch.zeros(g.shape[0], device=device)
+                    grad_accum += g.abs()
+                    grad_count += 1
+                for opt in optimizers.values():
+                    opt.step()
+
+                if (
+                    local_step <= densify_until
+                    and cfg.densify_every > 0
+                    and local_step % cfg.densify_every == 0
+                ):
+                    avg = grad_accum / grad_count.clamp_min(1).unsqueeze(-1)
+                    _densify_prune(model, optimizers, avg, cfg)
+                    grad_accum = torch.zeros_like(model.means)
+                    grad_count = torch.zeros(model.means.shape[0], device=device)
+
+                if local_step % 50 == 0 or local_step == 1:
+                    print(
+                        f"gstep={global_step}/{total_steps} stage={stage_i+1} "
+                        f"loc={local_step}/{stage.steps} loss={loss.item():.4f} "
+                        f"l1={loss_l1.item():.4f} n={model.means.shape[0]} "
+                        f"({time.time()-t0:.0f}s)"
+                    )
+
+                if cfg.ckpt_every > 0 and local_step % cfg.ckpt_every == 0:
+                    save_checkpoint(
+                        out,
+                        _pack_cpu_ckpt(
+                            cfg,
+                            model,
+                            stage_i=stage_i,
+                            local_step=local_step,
+                            global_step=global_step,
+                            optimizers=optimizers,
+                        ),
+                    )
+                    print(f"  checkpoint stage={stage_i+1} loc={local_step}")
+
+            if cfg.save_every_stage:
+                ply = out / f"splat_stage{stage_i+1}_factor{stage.data_factor}.ply"
+                export_gsplat_ply(
+                    ply,
+                    model.means,
+                    model.scales,
+                    F.normalize(model.quats, dim=-1),
+                    model.opacities,
+                    model.colors_dc,
+                    model.colors_rest,
+                )
+                save_checkpoint(
+                    out,
+                    _pack_cpu_ckpt(
+                        cfg,
+                        model,
+                        stage_i=stage_i,
+                        local_step=stage.steps,
+                        global_step=global_step,
+                        optimizers=optimizers,
+                    ),
+                    also_named=out / f"ckpt_stage{stage_i+1}.pt",
+                )
+                print(f"  saved {ply}")
+            # After finishing a resumed stage, next stages start from local 1
+            resume_local_step = 0
+    except KeyboardInterrupt:
+        print("Interrupted - writing ckpt_latest.pt (use --resume)")
+        save_checkpoint(
+            out,
+            _pack_cpu_ckpt(
+                cfg,
+                model,
+                stage_i=stage_i,
+                local_step=local_step,
+                global_step=global_step,
+                optimizers=optimizers,
+            ),
+        )
+        raise SystemExit(130)
 
     final_ply = out / "splat_final.ply"
     export_gsplat_ply(
@@ -308,6 +448,7 @@ def train(cfg: TrainConfig) -> Path:
         "device": str(device),
         "lpips": lpips.available,
         "out": str(out),
+        "global_step": global_step,
     }
     (out / "train_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(meta, indent=2))

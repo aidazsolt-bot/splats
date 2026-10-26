@@ -41,6 +41,17 @@ def main() -> None:
     )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", type=str, default="cpu")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue from ckpt_latest.pt in --out (same settings required)",
+    )
+    ap.add_argument(
+        "--ckpt-every",
+        type=int,
+        default=50,
+        help="Write ckpt_latest.pt every N local steps (0=stage ends / interrupt only)",
+    )
     args = ap.parse_args()
 
     if args.smoke:
@@ -67,6 +78,8 @@ def main() -> None:
         stages=stages,
         seed=args.seed,
         device=args.device,
+        resume=args.resume,
+        ckpt_every=args.ckpt_every,
     )
     out = train(cfg)
     print(f"Done. Results in {out}")

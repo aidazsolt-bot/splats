@@ -27,7 +27,15 @@ python engines_opencl/run_train.py --prefer nvidia \
 python engines_opencl/run_train.py --prefer nvidia \
   --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
   --out opencl_out --data-factor 4 --steps 5000
+
+# after interrupt / disconnect: same flags + --resume
+python engines_opencl/run_train.py --prefer nvidia --resume \
+  --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
+  --out opencl_out --data-factor 4 --steps 5000
 ```
+
+Checkpoints: `ckpt_latest.pt` every `--ckpt-every` steps (default 50), also on Ctrl-C.
+`--resume` requires the same settings as `cfg.json` in `--out`.
 
 Training uses the **CPU differentiable** rasterizer (needed for autograd). OpenCL device
 selection matters for ICD probing / preview. If Intel UHD appears despite index 1,
