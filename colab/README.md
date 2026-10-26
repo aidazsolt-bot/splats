@@ -50,8 +50,8 @@ Outputs default under `MyDrive/blackberry-splats/engines_cuda_out/` (notebook `O
 
 ## Resume
 
-After a disconnect, re-run the train cell with the same `DATA` / `OUT` / flags and `RESUME = True`
-(`--resume`). Loads `ckpt_latest.pt` from Drive; settings must match `cfg.json`.
+After a disconnect, re-run with `RESUME = True` (`--resume`). Loads `ckpt_latest.pt` if present;
+otherwise prints a hint and starts fresh. Existing ckpt: settings must match `cfg.json`.
 
 ## Limits
 

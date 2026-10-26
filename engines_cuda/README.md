@@ -70,7 +70,7 @@ python engines_cuda/run_train.py --resume \
 ```
 
 `ckpt_latest.pt` is written every `--ckpt-every` steps (default 500) and on Ctrl-C.
-Settings must match `cfg.json` in `--out`.
+`--resume` with no checkpoint: hint + fresh start. With checkpoint: settings must match `cfg.json`.
 
 Outputs:
 

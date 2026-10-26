@@ -21,8 +21,8 @@ sys.path[:0] = [str(ROOT), str(REPO / "engines_cuda"), str(REPO / "engines_cpu_t
 from dataset.colmap_rgba import ColmapRGBADataset, init_gaussians_from_points3d  # noqa: E402
 from engines_common.resume import (  # noqa: E402
     assert_same_settings,
-    find_checkpoint,
     load_checkpoint,
+    resolve_resume_checkpoint,
     save_checkpoint,
     tensor_to_param,
     write_cfg,
@@ -169,8 +169,9 @@ def main() -> None:
     device = torch.device("cpu")
 
     saved = None
-    if args.resume:
-        saved = load_checkpoint(find_checkpoint(out), map_location="cpu")
+    ckpt_path = resolve_resume_checkpoint(out, args.resume)
+    if ckpt_path is not None:
+        saved = load_checkpoint(ckpt_path, map_location="cpu")
         saved_cfg = saved.get("cfg")
         if saved_cfg is None:
             from engines_common.resume import load_cfg
@@ -188,7 +189,7 @@ def main() -> None:
         dc = tensor_to_param(saved["colors_dc"], device)
         rest = tensor_to_param(saved["colors_rest"], device)
         scene_scale = float(saved.get("scene_scale", 1.0))
-        print(f"Resume from step={start_step} n={means.shape[0]}")
+        print(f"Resume from step={start_step} n={means.shape[0]} ({ckpt_path.name})")
     else:
         write_cfg(out, cfg)
         init = init_gaussians_from_points3d(ds.points, device=device, sh_degree=2)

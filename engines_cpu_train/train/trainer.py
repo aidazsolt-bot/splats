@@ -30,8 +30,8 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 from engines_common.resume import (  # noqa: E402
     assert_same_settings,
-    find_checkpoint,
     load_checkpoint,
+    resolve_resume_checkpoint,
     save_checkpoint,
     tensor_to_param,
     write_cfg,
@@ -233,8 +233,9 @@ def train(cfg: TrainConfig) -> Path:
     resume_local_step = 0
     global_step = 0
 
-    if cfg.resume:
-        saved = load_checkpoint(find_checkpoint(out), map_location="cpu")
+    ckpt_path = resolve_resume_checkpoint(out, cfg.resume)
+    if ckpt_path is not None:
+        saved = load_checkpoint(ckpt_path, map_location="cpu")
         saved_cfg = saved.get("cfg")
         if saved_cfg is None:
             from engines_common.resume import load_cfg
@@ -256,7 +257,7 @@ def train(cfg: TrainConfig) -> Path:
         global_step = int(saved.get("global_step", 0))
         print(
             f"Resume stage={resume_stage_i + 1} local_step={resume_local_step} "
-            f"gstep={global_step} n={model.means.shape[0]}"
+            f"gstep={global_step} n={model.means.shape[0]} ({ckpt_path.name})"
         )
     else:
         write_cfg(out, cfg_dump)

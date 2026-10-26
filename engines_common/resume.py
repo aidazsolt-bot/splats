@@ -77,7 +77,8 @@ def assert_same_settings(
         )
 
 
-def find_checkpoint(out_dir: Path, prefer_latest: bool = True) -> Path:
+def find_checkpoint(out_dir: Path, prefer_latest: bool = True) -> Optional[Path]:
+    """Return latest ckpt path, or None if --out has no checkpoint yet."""
     out_dir = Path(out_dir)
     latest = out_dir / LATEST_NAME
     if prefer_latest and latest.is_file():
@@ -85,12 +86,11 @@ def find_checkpoint(out_dir: Path, prefer_latest: bool = True) -> Path:
     numbered = sorted(out_dir.glob("ckpt_*.pt"))
     numbered = [p for p in numbered if p.name != LATEST_NAME]
     if not numbered:
-        # stage-named cpu ckpts
         staged = sorted(out_dir.glob("ckpt_stage*.pt"))
         if staged:
             return staged[-1]
-        raise SystemExit(f"--resume: no checkpoint under {out_dir}")
-    # Prefer highest step in ckpt_NNNNN.pt
+        return None
+
     def step_key(p: Path) -> int:
         stem = p.stem  # ckpt_07000
         parts = stem.split("_")
@@ -101,6 +101,20 @@ def find_checkpoint(out_dir: Path, prefer_latest: bool = True) -> Path:
 
     numbered.sort(key=step_key)
     return numbered[-1]
+
+
+def resolve_resume_checkpoint(out_dir: Path, want_resume: bool) -> Optional[Path]:
+    """If want_resume and a ckpt exists, return it. Missing ckpt -> None + hint (fresh start)."""
+    if not want_resume:
+        return None
+    path = find_checkpoint(out_dir)
+    if path is None:
+        print(
+            f"--resume: no checkpoint under {out_dir}; starting a new run "
+            f"(will write {LATEST_NAME} as training progresses)"
+        )
+        return None
+    return path
 
 
 def save_checkpoint(out_dir: Path, payload: Dict[str, Any], also_named: Optional[Path] = None) -> Path:
