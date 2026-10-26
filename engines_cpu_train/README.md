@@ -22,8 +22,8 @@ pip install -r engines_cpu_train/requirements.txt
 
 # full quality schedule (long on CPU)
 python engines_cpu_train/run_train.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
-  --out "$HOME/tmp/blackberry-splats/engines_cpu_train_out"
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 
 # short verification
 python engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"

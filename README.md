@@ -16,7 +16,7 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
 ```bash
 pip install -r engines_cpu_train/requirements.txt
-python engines_cpu_train/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --out "$HOME/tmp/blackberry-splats/engines_cpu_train_out"
+python engines_cpu_train/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 ```
 
 Smoke test: `python engines_cpu_train/run_train.py --smoke`
@@ -28,12 +28,12 @@ Details: [`engines_cpu_train/README.md`](engines_cpu_train/README.md)
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
-python engines_cuda/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --max-steps 30000
+python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --max-steps 30000
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
 
-Optional flags: `--data-factor 2`, `--out "$HOME/tmp/blackberry-splats/engines_cuda_out"`, `--smoke` (short verification run).
+Optional flags: `--data-factor 2`, `--out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out"`, `--smoke` (short verification run).
 
 Details: [`engines_cuda/README.md`](engines_cuda/README.md)
 
@@ -41,7 +41,7 @@ Details: [`engines_cuda/README.md`](engines_cuda/README.md)
 
 ```bash
 pip install -r engines/requirements.txt
-python engines/run_blackberry.py --data "$HOME/tmp/blackberry-splats/dataset" --out "$HOME/tmp/blackberry-splats/engines_out"
+python engines/run_blackberry.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_out"
 ```
 
 Details: [`engines/README.md`](engines/README.md)
@@ -51,7 +51,7 @@ Details: [`engines/README.md`](engines/README.md)
 ```bash
 pip install -r engines_opencl/requirements.txt
 python engines_opencl/list_devices.py
-python engines_opencl/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --out opencl_out
+python engines_opencl/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --out opencl_out
 ```
 
 Use `--cpu-fallback` if no OpenCL ICD is installed. Details: [`engines_opencl/README.md`](engines_opencl/README.md)
@@ -60,7 +60,7 @@ Use `--cpu-fallback` if no OpenCL ICD is installed. Details: [`engines_opencl/RE
 
 ```bash
 python engines_povray/colmap_to_pov.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out povray_out \
   --mesh engines_out/mesh.ply
 python engines_povray/render_views.py --scene-dir povray_out --indices 0

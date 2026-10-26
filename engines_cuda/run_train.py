@@ -21,13 +21,13 @@ def main() -> None:
     ap.add_argument(
         "--data",
         type=Path,
-        default=Path.home() / "tmp" / "blackberry-splats" / "dataset",
+        default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "dataset",
         help="COLMAP root with cameras.txt / images.txt / points3D.txt / images/",
     )
     ap.add_argument(
         "--out",
         type=Path,
-        default=Path.home() / "tmp" / "blackberry-splats" / "engines_cuda_out",
+        default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "engines_cuda_out",
     )
     ap.add_argument("--data-factor", type=int, default=2)
     ap.add_argument("--max-steps", type=int, default=30000)

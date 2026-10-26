@@ -27,13 +27,13 @@ def main() -> None:
     ap.add_argument(
         "--data",
         type=Path,
-        default=Path.home() / "tmp" / "blackberry-splats" / "dataset",
+        default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "dataset",
         help="Dataset root (cameras.txt, images.txt, points3D.txt, images/)",
     )
     ap.add_argument(
         "--out",
         type=Path,
-        default=Path.home() / "tmp" / "blackberry-splats" / "engines_out",
+        default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "engines_out",
         help="Output directory",
     )
     ap.add_argument("--downscale", type=int, default=4, help="Image downscale for projection/bake")
@@ -119,7 +119,7 @@ def main() -> None:
 
     # Optional copy of Danny reference splat if present next to zip extract
     print("[5/5] Summary")
-    ref = Path.home() / "tmp" / "blackberry-splats" / "extract" / "output" / "splat_45000.ply"
+    ref = Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "extract" / "output" / "splat_45000.ply"
     if ref.is_file():
         dest = out / "danny_splat_45000.ply"
         if not dest.exists():

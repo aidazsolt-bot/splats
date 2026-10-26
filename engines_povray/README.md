@@ -11,13 +11,13 @@ Builds a POV-Ray 3.7 scene from:
 ```bash
 # 1) Generate scene (mesh if engines_out/mesh.ply exists, else point spheres)
 python engines_povray/colmap_to_pov.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out povray_out \
   --mesh engines_out/mesh.ply
 
 # optional photo planes
 python engines_povray/colmap_to_pov.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out povray_out \
   --mesh engines_out/mesh.ply \
   --billboards --billboard-every 8

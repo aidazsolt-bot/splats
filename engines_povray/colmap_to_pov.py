@@ -332,7 +332,7 @@ def main() -> None:
     ap.add_argument(
         "--data",
         type=Path,
-        default=Path.home() / "tmp" / "blackberry-splats" / "dataset",
+        default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "dataset",
     )
     ap.add_argument(
         "--out",

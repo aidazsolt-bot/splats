@@ -21,7 +21,7 @@ python engines_opencl/run_train.py --smoke --out opencl_out --cpu-fallback
 
 # longer run on Arc / AMD OpenCL
 python engines_opencl/run_train.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out opencl_out \
   --data-factor 4 \
   --steps 5000

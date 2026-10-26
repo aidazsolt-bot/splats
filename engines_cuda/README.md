@@ -20,7 +20,7 @@ On a GPU machine:
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
-python engines_cuda/run_train.py --data "$HOME/tmp/blackberry-splats/dataset" --max-steps 30000
+python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --max-steps 30000
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
@@ -33,12 +33,12 @@ python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(
 
 ## Train Blackberry
 
-Dataset layout (COLMAP text + `images/*.png` RGBA), e.g. `$HOME/tmp/blackberry-splats/dataset`.
+Dataset layout (COLMAP text + `images/*.png` RGBA), e.g. `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`.
 
 ```bash
 python engines_cuda/run_train.py \
-  --data "$HOME/tmp/blackberry-splats/dataset" \
-  --out "$HOME/tmp/blackberry-splats/engines_cuda_out" \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out" \
   --data-factor 2 \
   --max-steps 30000
 ```
@@ -59,8 +59,8 @@ Outputs:
 
 ```bash
 python export/mesh_from_ckpt.py \
-  --ckpt "$HOME/tmp/blackberry-splats/engines_cuda_out/ckpt_30000.pt" \
-  --out "$HOME/tmp/blackberry-splats/engines_cuda_out/mesh_from_splat.ply"
+  --ckpt "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/ckpt_30000.pt" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/mesh_from_splat.ply"
 ```
 
 ## Training details

@@ -49,7 +49,7 @@ def _cpu_raster():
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="OpenCL hybrid 3DGS trainer")
-    ap.add_argument("--data", type=Path, default=Path.home() / "tmp" / "blackberry-splats" / "dataset")
+    ap.add_argument("--data", type=Path, default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "dataset")
     ap.add_argument("--out", type=Path, default=REPO / "opencl_out")
     ap.add_argument("--steps", type=int, default=5000)
     ap.add_argument("--data-factor", type=int, default=4)
