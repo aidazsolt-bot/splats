@@ -1,0 +1,6 @@
+pyopencl>=2024.1
+numpy
+torch>=2.1.0
+pillow
+scipy
+tqdm
