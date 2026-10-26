@@ -54,13 +54,20 @@ bootstrap; you choose components) over the local/exe_local package (~3 GB full d
 
 [CUDA 12.1 network installer (Windows x86_64)](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
 
-In the installer custom UI, keep at least:
+In the installer, choose **Custom** (not Express):
 
-- CUDA / CUDA Development (includes **nvcc**)
-- CUDA Runtime
+- Keep: **CUDA Development** (includes **nvcc**) and **CUDA Runtime**
+- **Deselect Display Driver** if `nvidia-smi` already works - the toolkit often offers an
+  older bundled driver; installing it can downgrade a newer Game Ready / Studio driver
+- Skip: Demo Suite, Documentation, Nsight extras you do not need, samples
 
-You can skip Demo Suite, Documentation, extra samples, and unrelated tools to save disk/time.
-(Driver can stay as-is if `nvidia-smi` already works.)
+Notes from Windows installs:
+
+- Even if you set the install root to **D:**, expect **hundreds of MB on C:**
+  (often 500+ MB) for ProgramData / shortcuts / Visual Studio integration / residual
+  components - budget free space on the system drive
+- Prefer the network installer so you can deselect the driver and bulky options;
+  the ~3 GB local package pulls far more by default
 
 After install, **new** PowerShell:
 

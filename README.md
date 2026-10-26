@@ -57,8 +57,9 @@ Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit. Op
 
 **Windows:** driver alone is not enough for gsplat - install **CUDA Toolkit 12.1** via the
 [~29 MB network installer](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
-(select CUDA Development / `nvcc` + Runtime; skip the ~3 GB local full package unless you want everything).
-Then reinstall `gsplat`. Details: [`engines_cuda/README.md`](engines_cuda/README.md).
+(Custom: Development/`nvcc` + Runtime; **deselect Display Driver** if the GPU driver is
+already fine; expect 500+ MB on `C:` even when targeting `D:`). Then reinstall `gsplat`.
+Details: [`engines_cuda/README.md`](engines_cuda/README.md).
 
 ### CPU deterministic (no training)
 
