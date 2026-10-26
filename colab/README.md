@@ -44,7 +44,7 @@ MyDrive/blackberry-splats/dataset/
   images/*.png
 ```
 
-Same layout as `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` on the lab host.
+Same layout as Linux `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` and Windows `X:\blackberry-splats\dataset`.
 
 Outputs default under `MyDrive/blackberry-splats/engines_cuda_out/` (notebook `OUT`).
 

@@ -15,17 +15,21 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
 ## Dataset
 
-COLMAP text + RGBA PNGs, e.g. lab host:
+COLMAP text + RGBA PNGs (same layout everywhere):
+
+| Host | `--data` |
+|------|----------|
+| Linux lab | `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` |
+| Windows | `X:\blackberry-splats\dataset` |
+| Colab Drive | `MyDrive/blackberry-splats/dataset` |
 
 ```text
-/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset/
+dataset/
   cameras.txt
   images.txt
   points3D.txt
   images/*.png
 ```
-
-On Colab Drive: `MyDrive/blackberry-splats/dataset/` (same layout).
 
 ## Usage
 
@@ -80,10 +84,18 @@ Smoke: `python engines_cpu_train/run_train.py --smoke`. Resume: add `--resume` w
 ```bash
 pip install -r engines_opencl/requirements.txt
 python engines_opencl/list_devices.py
-python engines_opencl/run_train.py \
-  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
-  --out opencl_out
-# after abort: same command + --resume
+
+# Windows
+python engines_opencl/run_train.py --prefer nvidia \
+  --data X:\blackberry-splats\dataset --out opencl_out --data-factor 4 --steps 5000
+# after abort (same flags):
+python engines_opencl/run_train.py --prefer nvidia --resume \
+  --data X:\blackberry-splats\dataset --out opencl_out --data-factor 4 --steps 5000
+
+# Linux lab
+python engines_opencl/run_train.py --prefer nvidia \
+  --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
+  --out opencl_out --data-factor 4 --steps 5000
 ```
 
 Use `--cpu-fallback` if no OpenCL ICD is installed. Details: [`engines_opencl/README.md`](engines_opencl/README.md).

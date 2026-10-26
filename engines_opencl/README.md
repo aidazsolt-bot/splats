@@ -21,18 +21,19 @@ python engines_opencl/run_train.py --smoke --out opencl_out --cpu-fallback
 
 # Windows / dual GPU: force NVIDIA (not Intel UHD)
 python engines_opencl/run_train.py --prefer nvidia \
-  --data X:\blackberry-splats\dataset --out opencl_out --steps 5000
+  --data X:\blackberry-splats\dataset --out opencl_out --data-factor 4 --steps 5000
 
-# longer run
+# after interrupt: same flags + --resume
+python engines_opencl/run_train.py --prefer nvidia --resume \
+  --data X:\blackberry-splats\dataset --out opencl_out --data-factor 4 --steps 5000
+
+# Linux lab
 python engines_opencl/run_train.py --prefer nvidia \
   --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
   --out opencl_out --data-factor 4 --steps 5000
-
-# after interrupt / disconnect: same flags + --resume
-python engines_opencl/run_train.py --prefer nvidia --resume \
-  --data /usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset \
-  --out opencl_out --data-factor 4 --steps 5000
 ```
+
+`--data` Windows: `X:\blackberry-splats\dataset` · Linux: `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`
 
 Checkpoints: `ckpt_latest.pt` every `--ckpt-every` steps (default 50), also on Ctrl-C.
 `--resume` requires the same settings as `cfg.json` in `--out`.

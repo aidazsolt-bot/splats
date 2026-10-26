@@ -27,7 +27,9 @@ On a GPU machine:
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
+# Linux lab
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --max-steps 30000
+# Windows: --data X:\blackberry-splats\dataset
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
@@ -40,7 +42,8 @@ python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(
 
 ## Train Blackberry
 
-Dataset layout (COLMAP text + `images/*.png` RGBA), e.g. `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`.
+Dataset layout (COLMAP text + `images/*.png` RGBA):
+Linux `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`, Windows `X:\blackberry-splats\dataset`.
 
 ```bash
 python engines_cuda/run_train.py \

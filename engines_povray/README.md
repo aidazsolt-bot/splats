@@ -14,6 +14,7 @@ python engines_povray/colmap_to_pov.py \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out povray_out \
   --mesh engines_out/mesh.ply
+# Windows: --data X:\blackberry-splats\dataset
 
 # optional photo planes
 python engines_povray/colmap_to_pov.py \

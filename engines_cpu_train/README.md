@@ -24,6 +24,7 @@ pip install -r engines_cpu_train/requirements.txt
 python engines_cpu_train/run_train.py \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
+# Windows: --data X:\blackberry-splats\dataset
 
 # short verification
 python engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"
@@ -32,6 +33,7 @@ python engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"
 python engines_cpu_train/run_train.py --resume \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
+# Windows: --data X:\blackberry-splats\dataset
 ```
 
 Outputs: `splat_final.ply`, per-stage PLY/ckpt, `ckpt_latest.pt`, `train_meta.json`.

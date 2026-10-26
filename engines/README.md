@@ -29,6 +29,7 @@ python run_blackberry.py \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_out" \
   --downscale 4 \
   --densify-rounds 1
+# Windows: --data X:\blackberry-splats\dataset
 ```
 
 Outputs under `/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_out/`:
