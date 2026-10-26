@@ -72,20 +72,29 @@ Notes from Windows installs (painful but real):
 - If C: cannot spare ~6 GB: skip local Toolkit and use **Google Colab**
   ([`../colab/`](../colab/)) or another machine with room for `nvcc`
 
-After install, **new** PowerShell:
+After install, **new** PowerShell (`nvcc` must be on PATH - Toolkit often lands under
+`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1` even if you picked D:):
 
 ```powershell
 $env:CUDA_HOME = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1"
 $env:Path = "$env:CUDA_HOME\bin;" + $env:Path
 nvcc --version
 
+# gsplat JIT-builds CUDA kernels - needs ninja + MSVC (VS Build Tools "Desktop C++")
+pip install ninja
 pip uninstall gsplat -y
 pip install gsplat --no-cache-dir
-python -c "from gsplat.cuda import _wrapper as w; print('gsplat CUDA:', w._C is not None)"
+
+# First import may compile for a few minutes
+python -c "from gsplat.cuda._backend import _C; print('gsplat CUDA ok', _C is not None)"
 
 python .\engines_cuda\run_train.py --resume `
   --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
 ```
+
+- `Ninja is required to load C++ extensions` -> `pip install ninja`, retry
+- `cl.exe` / MSVC errors -> [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+  with **Desktop development with C++**, then rebuild from an x64 Dev prompt
 
 GTX 1650 (4 GB): start with `--data-factor 4` (or `8` on OOM).
 
