@@ -38,7 +38,46 @@ Confirm CUDA before a long run:
 
 ```bash
 python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(torch.cuda.get_device_name(0))"
+# gsplat must have a real CUDA extension (not disabled):
+python -c "from gsplat.cuda import _wrapper as w; assert w._C is not None, 'install CUDA Toolkit + reinstall gsplat'"
 ```
+
+### Windows: CUDA Toolkit for gsplat (needed beyond the driver)
+
+`nvidia-smi` + `torch.cuda.is_available() == True` is **not** enough. gsplat builds/loads
+CUDA kernels and needs **`nvcc`** from the CUDA Toolkit. Symptom if missing:
+
+`gsplat: No CUDA toolkit found. gsplat will be disabled` then `AttributeError: 'NoneType'...CameraModelType`.
+
+For Torch **`cu121`**, install **CUDA Toolkit 12.1**. Prefer the **network installer** (~29 MB
+bootstrap; you choose components) over the local/exe_local package (~3 GB full download):
+
+[CUDA 12.1 network installer (Windows x86_64)](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
+
+In the installer custom UI, keep at least:
+
+- CUDA / CUDA Development (includes **nvcc**)
+- CUDA Runtime
+
+You can skip Demo Suite, Documentation, extra samples, and unrelated tools to save disk/time.
+(Driver can stay as-is if `nvidia-smi` already works.)
+
+After install, **new** PowerShell:
+
+```powershell
+$env:CUDA_HOME = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1"
+$env:Path = "$env:CUDA_HOME\bin;" + $env:Path
+nvcc --version
+
+pip uninstall gsplat -y
+pip install gsplat --no-cache-dir
+python -c "from gsplat.cuda import _wrapper as w; print('gsplat CUDA:', w._C is not None)"
+
+python .\engines_cuda\run_train.py --resume `
+  --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
+```
+
+GTX 1650 (4 GB): start with `--data-factor 4` (or `8` on OOM).
 
 ## Train Blackberry
 

@@ -55,7 +55,10 @@ python engines_cuda/run_train.py \
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit. Optional: `--data-factor 2`, `--smoke`, `--resume` (same settings + `--out`).
 
-Details: [`engines_cuda/README.md`](engines_cuda/README.md)
+**Windows:** driver alone is not enough for gsplat - install **CUDA Toolkit 12.1** via the
+[~29 MB network installer](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
+(select CUDA Development / `nvcc` + Runtime; skip the ~3 GB local full package unless you want everything).
+Then reinstall `gsplat`. Details: [`engines_cuda/README.md`](engines_cuda/README.md).
 
 ### CPU deterministic (no training)
 
