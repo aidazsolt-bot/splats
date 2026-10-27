@@ -1,10 +1,11 @@
 # Install on a machine with NVIDIA GPU + matching CUDA toolkit.
 # Example (CUDA 12.1):
 #   pip install torch --index-url https://download.pytorch.org/whl/cu121
-#   pip install gsplat numpy pillow scipy tqdm open3d imageio
+#   python -m pip install -r engines_cuda/requirements.txt
 
 torch>=2.1.0
 gsplat>=1.4.0
+ninja
 numpy
 pillow
 scipy

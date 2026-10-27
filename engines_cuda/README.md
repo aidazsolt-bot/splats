@@ -18,13 +18,42 @@ Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUD
 On a GPU machine:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-pip install -r engines_cuda/requirements.txt
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r engines_cuda/requirements.txt
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
 # Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
+
+### Windows: gsplat CUDA extension build
+
+If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
+requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and
+Visual Studio 2022 Build Tools with **Desktop development with C++** (MSVC x64
+tools and Windows SDK). Run training from **Developer PowerShell for VS 2022**
+or an **x64 Native Tools Command Prompt for VS 2022**.
+
+For `RuntimeError: Ninja is required to load C++ extensions`, install Ninja
+using the same Python interpreter that runs training:
+
+```powershell
+python -m pip install ninja
+ninja --version
+nvcc --version
+cl
+python -c "import torch; print(torch.__version__, torch.version.cuda)"
+```
+
+`ninja`, `nvcc`, and `cl` must be available on `PATH` in that terminal. If
+`ninja` is not found after installation, add that Python installation's Scripts
+directory to `PATH` (for a user install, locate it with
+`python -m site --user-site` and replace the trailing `site-packages` with
+`Scripts`). Match the installed CUDA toolkit to `torch.version.cuda`.
+
+The initial `ImportError: cannot import name 'csrc' from 'gsplat'` triggers this
+build fallback; the final build error is the one to resolve. Merely importing
+gsplat does not verify that its CUDA extension can build or load.
 
 Confirm CUDA before a long run:
 
@@ -49,6 +78,17 @@ Smoke test on GPU:
 ```bash
 python run_train.py --smoke --data-factor 4 --out /tmp/gs_smoke
 ```
+
+Resume with the same settings and output directory:
+
+```powershell
+python engines_cuda/run_train.py --resume --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
+```
+
+`--resume` starts a new run if no checkpoint exists. Otherwise it restores the
+Gaussians, optimizer state, and training step, rejecting incompatible settings.
+`ckpt_latest.pt` is saved every `--ckpt-every` steps (default 500), at numbered
+save steps, and on Ctrl-C.
 
 Outputs:
 

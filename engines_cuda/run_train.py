@@ -43,6 +43,17 @@ def main() -> None:
         action="store_true",
         help="Tiny run (500 steps) to verify the stack on a GPU box",
     )
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue from ckpt_latest.pt in --out (same settings required)",
+    )
+    ap.add_argument(
+        "--ckpt-every",
+        type=int,
+        default=500,
+        help="Write ckpt_latest.pt every N steps (0=only save_steps / interrupt)",
+    )
     args = ap.parse_args()
 
     save_steps = (7000, 15000, 30000)
@@ -64,6 +75,8 @@ def main() -> None:
         densify=not args.no_densify,
         random_bkgd=not args.no_random_bkgd,
         device=args.device,
+        resume=args.resume,
+        ckpt_every=args.ckpt_every,
     )
     out = train(cfg)
     print(f"Training finished. Results in {out}")
