@@ -20,11 +20,14 @@ python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-s
 ```
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
+Tested Windows versions (driver, CUDA, MSVC, torch, gsplat): see [engines_cuda/README.md](engines_cuda/README.md#windows-gsplat-cuda-extension-build).
 
 Optional flags: `--data-factor 2` (default `1` = original resolution), `--cache-images` (preload images into RAM), `--out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out"`, `--smoke` (short verification run).
 `--cache-images` and `--cache-workers` (number of parallel threads that read/decode/downscale images during the one-time preload; default `8`) can be changed freely between resumed runs; `--data-factor` must stay the same.
 
 Details: [`engines_cuda/README.md`](engines_cuda/README.md)
+
+Required in `--data`: COLMAP text files `cameras.txt`, `images.txt`, `points3D.txt` plus the `images/` folder (RGBA recommended; alpha = subject mask). See [required dataset files](engines_cuda/README.md#required-dataset-files).
 
 ### CPU deterministic (no training)
 

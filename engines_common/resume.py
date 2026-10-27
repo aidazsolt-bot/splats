@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -117,16 +120,44 @@ def resolve_resume_checkpoint(out_dir: Path, want_resume: bool) -> Optional[Path
     return path
 
 
+def _atomic_save(payload: Dict[str, Any], path: Path) -> None:
+    temporary: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", prefix=path.stem + "_", suffix=".tmp",
+            dir=path.parent, delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            torch.save(payload, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        for attempt in range(5):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError as error:
+                if attempt == 4:
+                    raise PermissionError(
+                        f"Cannot replace checkpoint {path}; the previous file is unchanged. "
+                        "Close programs holding the file open and check folder permissions."
+                    ) from error
+                print(f"Checkpoint {path} is locked; retrying replacement...", flush=True)
+                time.sleep(0.25)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def save_checkpoint(out_dir: Path, payload: Dict[str, Any], also_named: Optional[Path] = None) -> Path:
     """Write ckpt_latest.pt and optionally a numbered/stage file."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     latest = out_dir / LATEST_NAME
-    torch.save(payload, latest)
+    _atomic_save(payload, latest)
     if also_named is not None:
         also_named = Path(also_named)
         also_named.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(payload, also_named)
+        _atomic_save(payload, also_named)
         return also_named
     return latest
 

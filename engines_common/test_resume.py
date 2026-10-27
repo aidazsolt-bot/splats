@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import torch
 
@@ -13,6 +14,59 @@ from engines_common.resume import (
 
 
 class ResumeTests(unittest.TestCase):
+    def test_failed_serialization_preserves_previous_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            latest = save_checkpoint(out, {"step": 1})
+
+            def fail_save(payload, stream):
+                stream.write(b"incomplete checkpoint")
+                raise OSError("disk write failed")
+
+            with patch("engines_common.resume.torch.save", side_effect=fail_save):
+                with self.assertRaisesRegex(OSError, "disk write failed"):
+                    save_checkpoint(out, {"step": 2})
+            self.assertEqual(load_checkpoint(latest)["step"], 1)
+            self.assertEqual(list(out.glob("*.tmp")), [])
+
+    def test_transient_replacement_lock_is_retried(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            latest = save_checkpoint(out, {"step": 1})
+            import os
+
+            replace = os.replace
+            attempts = 0
+
+            def locked_once(source, target):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise PermissionError("locked")
+                replace(source, target)
+
+            with (
+                patch("engines_common.resume.os.replace", side_effect=locked_once),
+                patch("engines_common.resume.time.sleep"),
+            ):
+                save_checkpoint(out, {"step": 2})
+            self.assertEqual(attempts, 2)
+            self.assertEqual(load_checkpoint(latest)["step"], 2)
+            self.assertEqual(list(out.glob("*.tmp")), [])
+
+    def test_persistent_replacement_lock_preserves_previous_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            latest = save_checkpoint(out, {"step": 1})
+            with (
+                patch("engines_common.resume.os.replace", side_effect=PermissionError("locked")),
+                patch("engines_common.resume.time.sleep"),
+            ):
+                with self.assertRaisesRegex(PermissionError, "previous file is unchanged"):
+                    save_checkpoint(out, {"step": 2})
+            self.assertEqual(load_checkpoint(latest)["step"], 1)
+            self.assertEqual(list(out.glob("*.tmp")), [])
+
     def test_missing_checkpoint_starts_fresh(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as tmp:
             self.assertIsNone(resolve_resume_checkpoint(Path(tmp), True))
