@@ -32,14 +32,25 @@ python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-s
 # Windows: --data X:\blackberry-splats\dataset
 ```
 
-Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
+### Supported stack (pin this - do not mix)
+
+| Piece | Use this |
+|-------|----------|
+| PyTorch wheel | **`cu121`** (e.g. `2.5.1+cu121` works; newer Torch is fine **only** if still `+cu121`) |
+| CUDA Toolkit (`nvcc`) | **12.1** (`...\CUDA\v12.1`) |
+| MSVC | VS **2022** Build Tools + workload **VCTools** (Desktop C++) |
+| gsplat extras | **`ninja`** on PATH; first import JIT-compiles CUDA kernels |
+
+PyPI "latest" Torch may be newer (e.g. **2.14.x**) - that does **not** mean you should jump to
+Toolkit 12.4 / `cu124`. Match **wheel tag ↔ Toolkit major.minor**. Newer NVIDIA **drivers**
+(e.g. UMD 13.x) are OK with Toolkit 12.1.
 
 Confirm CUDA before a long run:
 
 ```bash
-python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(torch.cuda.get_device_name(0))"
-# gsplat must have a real CUDA extension (not disabled):
-python -c "from gsplat.cuda import _wrapper as w; assert w._C is not None, 'install CUDA Toolkit + reinstall gsplat'"
+python -c "import torch; assert torch.cuda.is_available(); print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"
+# gsplat must load the compiled extension:
+python -c "from gsplat.cuda._backend import _C; assert _C is not None"
 ```
 
 ### Windows: CUDA Toolkit for gsplat (needed beyond the driver)
@@ -93,8 +104,17 @@ python .\engines_cuda\run_train.py --resume `
 ```
 
 - `Ninja is required to load C++ extensions` -> `pip install ninja`, retry
-- `cl.exe` / MSVC errors -> [VS Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-  with **Desktop development with C++**, then rebuild from an x64 Dev prompt
+- `cl.exe` / MSVC missing -> install Build Tools (winget, elevated / UAC OK):
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+  Then **new** PowerShell (or "x64 Native Tools Command Prompt"), set `CUDA_HOME`/`Path` as above,
+  and re-run the `from gsplat.cuda._backend import _C` check (first compile can take minutes).
+
+`where.exe nvcc` empty while files exist under `...\CUDA\v12.1\bin` -> PATH/`CUDA_HOME` not set
+(Toolkit install succeeded; shell just cannot see `nvcc`).
 
 GTX 1650 (4 GB): start with `--data-factor 4` (or `8` on OOM).
 

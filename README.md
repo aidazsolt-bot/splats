@@ -53,14 +53,20 @@ python engines_cuda/run_train.py \
   --max-steps 30000
 ```
 
-Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit. Optional: `--data-factor 2`, `--smoke`, `--resume` (same settings + `--out`).
+**Pin:** Torch **`cu121`** + CUDA Toolkit **12.1** + VS 2022 Build Tools (VCTools) + `ninja`.
+Do not mix with Toolkit 12.4 / `cu124` unless you upgrade Torch and Toolkit together.
+Optional flags: `--data-factor 2`, `--smoke`, `--resume`.
 
-**Windows:** driver alone is not enough for gsplat - install **CUDA Toolkit 12.1** via the
+**Windows:** driver alone is not enough for gsplat - install Toolkit **12.1** via the
 [~29 MB network installer](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
-(Custom: Development/`nvcc` + Runtime; **deselect Display Driver** if the GPU driver is
-already fine). The D: path option is misleading - plan on **~5–6 GB free on C:** anyway.
-If C: is full, use Colab instead. Then reinstall `gsplat`.
-Details: [`engines_cuda/README.md`](engines_cuda/README.md).
+(Custom: Development/`nvcc` + Runtime; **deselect Display Driver**). Plan **~5–6 GB on C:**
+even if targeting D:. Put `...\CUDA\v12.1\bin` on PATH, `pip install ninja`, then:
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Full checklist: [`engines_cuda/README.md`](engines_cuda/README.md). If C: is full: Colab.
 
 ### CPU deterministic (no training)
 
