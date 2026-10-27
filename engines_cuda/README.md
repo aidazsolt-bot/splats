@@ -112,8 +112,11 @@ python .\engines_cuda\run_train.py --resume `
 winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 ```
 
-  Then **new** PowerShell (or "x64 Native Tools Command Prompt"), set `CUDA_HOME`/`Path` as above,
-  and re-run the `from gsplat.cuda._backend import _C` check (first compile can take minutes).
+  Then activate MSVC using [the Windows setup guide](../WINDOWS_CUDA_SETUP.md)
+  or open **Developer PowerShell for VS 2022** / **x64 Native Tools Command Prompt**.
+  An ordinary new PowerShell does not activate the compiler environment.
+  Set `CUDA_HOME`/`Path` as above and re-run the `from gsplat.cuda._backend import _C`
+  check (first compile can take minutes).
 
 `where.exe nvcc` empty while files exist under `...\CUDA\v12.1\bin` -> PATH/`CUDA_HOME` not set
 (Toolkit install succeeded; shell just cannot see `nvcc`).
