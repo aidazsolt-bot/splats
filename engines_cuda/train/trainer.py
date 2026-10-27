@@ -54,7 +54,7 @@ CUDA_RESUME_KEYS = (
 class TrainConfig:
     data: str
     out: str
-    data_factor: int = 2
+    data_factor: int = 1
     max_steps: int = 30000
     save_steps: tuple = (7000, 15000, 30000)
     eval_every: int = 1000
@@ -88,6 +88,8 @@ class TrainConfig:
     device: str = "cuda"
     resume: bool = False
     ckpt_every: int = 500
+    cache_images: bool = False
+    cache_workers: int = 8
 
 
 def _require_cuda(device: str) -> torch.device:
@@ -303,10 +305,14 @@ def _save_cuda_ckpt(
 
 
 def train(cfg: TrainConfig) -> Path:
+    print(f"[startup] Checking device {cfg.device}...", flush=True)
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     device = _require_cuda(cfg.device)
+    if device.type == "cuda":
+        print(f"[startup] Using {device}: {torch.cuda.get_device_name(device)}", flush=True)
 
+    print("[startup] Importing gsplat...", flush=True)
     try:
         import gsplat  # noqa: F401
     except ImportError as e:
@@ -319,6 +325,7 @@ def train(cfg: TrainConfig) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     cfg_dict = _cfg_dict(cfg)
 
+    print(f"[startup] Loading COLMAP dataset from {cfg.data}...", flush=True)
     train_ds = ColmapRGBADataset(
         Path(cfg.data), data_factor=cfg.data_factor, split="train", test_every=cfg.test_every
     )
@@ -327,10 +334,21 @@ def train(cfg: TrainConfig) -> Path:
     )
     if len(train_ds) == 0:
         raise RuntimeError("No training views - check test_every / dataset")
+    if cfg.cache_images:
+        print(
+            f"[startup] Caching images in RAM (factor={cfg.data_factor}, "
+            f"workers={cfg.cache_workers})...",
+            flush=True,
+        )
+        train_ds.preload(workers=cfg.cache_workers, label="train")
+        test_ds.preload(workers=cfg.cache_workers, label="test")
+    else:
+        print("[startup] Image cache off: loading one image from disk per step", flush=True)
 
     start_step = 0
     ckpt_path = resolve_resume_checkpoint(out, cfg.resume)
     if ckpt_path is not None:
+        print(f"[startup] Loading checkpoint {ckpt_path}...", flush=True)
         saved = load_checkpoint(ckpt_path, map_location="cpu")
         saved_cfg = saved.get("cfg")
         if saved_cfg is None:
@@ -363,6 +381,7 @@ def train(cfg: TrainConfig) -> Path:
         print(f"Resume from step={start_step} n={model.means.shape[0]} ({ckpt_path.name})")
     else:
         write_cfg(out, cfg_dict)
+        print("[startup] Initializing Gaussians from COLMAP points...", flush=True)
         init = init_gaussians_from_points3d(train_ds.points, device=device, sh_degree=cfg.sh_degree)
         model = GaussianModel(init, sh_degree=cfg.sh_degree)
         optimizers = _build_optimizers(model, cfg, init.scene_scale)
@@ -386,15 +405,19 @@ def train(cfg: TrainConfig) -> Path:
     grad_count = torch.zeros(model.means.shape[0], device=device)
 
     t0 = time.time()
+    last_log = time.monotonic()
     step = start_step
     print(
         f"Train start: views={len(train_ds)} test={len(test_ds)} "
         f"init_gauss={model.means.shape[0]} factor={cfg.data_factor} "
-        f"steps={start_step + 1}..{cfg.max_steps}"
+        f"steps={start_step + 1}..{cfg.max_steps}",
+        flush=True,
     )
 
     try:
         for step in range(start_step + 1, cfg.max_steps + 1):
+            if step == start_step + 1:
+                print("[startup] Loading first training image...", flush=True)
             try:
                 batch = next(it)
             except StopIteration:
@@ -413,9 +436,17 @@ def train(cfg: TrainConfig) -> Path:
             # Ensure means require grad for densify stats
             model.means.requires_grad_(True)
 
+            if step == start_step + 1:
+                print(
+                    "[startup] First gsplat rasterization: CUDA extension may be "
+                    "compiled on the CPU before GPU work starts...",
+                    flush=True,
+                )
             colors, alphas, info = _rasterize(
                 model, viewmat, K, w, h, active_sh, cfg.near, cfg.far
             )
+            if step == start_step + 1:
+                print("[startup] Rasterization returned; computing loss and gradients...", flush=True)
 
             # Background: random or black behind alpha
             if cfg.random_bkgd:
@@ -475,14 +506,21 @@ def train(cfg: TrainConfig) -> Path:
                 with torch.no_grad():
                     model.opacities.data.clamp_(max=math.log(0.01 / 0.99))
 
-            if step % 100 == 0 or step == 1:
+            if (
+                step % 100 == 0
+                or step == start_step + 1
+                or step == cfg.max_steps
+                or time.monotonic() - last_log >= 10.0
+            ):
                 elapsed = time.time() - t0
                 print(
                     f"step={step}/{cfg.max_steps} loss={loss.item():.4f} "
                     f"l1={loss_l1.item():.4f} ssim={loss_ssim.item():.4f} "
                     f"alpha={loss_a.item():.4f} n={model.means.shape[0]} "
-                    f"sh={active_sh} ({elapsed:.1f}s)"
+                    f"sh={active_sh} ({elapsed:.1f}s)",
+                    flush=True,
                 )
+                last_log = time.monotonic()
 
             named = step in cfg.save_steps or step == cfg.max_steps
             periodic = cfg.ckpt_every > 0 and step % cfg.ckpt_every == 0

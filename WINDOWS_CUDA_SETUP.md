@@ -63,3 +63,15 @@ From the repository root on a branch containing `engines_cuda`:
 ```powershell
 python.exe .\engines_cuda\run_train.py --resume --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
 ```
+
+The trainer immediately prints startup phases and the selected NVIDIA device.
+The first gsplat rasterization may compile its CUDA extension on the CPU; the
+message before that call does not confirm that compilation is actually running.
+Step metrics are flushed after the first completed step (also after resume),
+every 100 steps, at the final step, or after 10 seconds at the next completed
+step. A single slow step or extension build can still take longer without a
+new metric line.
+
+To check actual GPU activity independently, run `nvidia-smi -l 1` in another
+terminal. CUDA device numbering is separate from Task Manager numbering:
+`cuda:0` can be Task Manager's GPU 1. Intel UHD is not a CUDA device.

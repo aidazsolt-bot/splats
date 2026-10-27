@@ -87,6 +87,19 @@ Resume with the same settings and output directory:
 python engines_cuda/run_train.py --resume --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
 ```
 
+### Image resolution and RAM cache
+
+- `--data-factor N` (default `1`): downscale training images by `N`. `1` trains
+  at the original resolution; `4` turns 2560x3840 into 640x960. Part of the
+  resume settings, so a resumed run must use the same value.
+- `--cache-images` (default off): decode and downscale all images once at
+  startup and keep them in RAM. Without it, each training step reads one image
+  from disk. Use it for slow (network) drives; at factor 1 it needs about
+  `width * height * 4` bytes per image (~37 MiB for 2560x3840).
+- `--cache-workers N` (default `8`): parallel loader threads for `--cache-images`.
+
+Both cache options can be changed between resumed runs.
+
 `--resume` starts a new run if no checkpoint exists. Otherwise it restores the
 Gaussians, optimizer state, and training step, rejecting incompatible settings.
 `ckpt_latest.pt` is saved every `--ckpt-every` steps (default 500), at numbered

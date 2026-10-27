@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import win_build_env  # noqa: E402
+
+print("[startup] Preparing build environment...", flush=True)
+win_build_env.setup()
+
+print("[startup] Loading training modules...", flush=True)
 from train.trainer import TrainConfig, train  # noqa: E402
 
 
@@ -29,7 +35,24 @@ def main() -> None:
         type=Path,
         default=Path("/usr/src/TestAdnroidNDKSDK/blackberry-splats") / "engines_cuda_out",
     )
-    ap.add_argument("--data-factor", type=int, default=2)
+    ap.add_argument(
+        "--data-factor",
+        type=int,
+        default=1,
+        help="Downscale training images by this factor (1 = original resolution)",
+    )
+    ap.add_argument(
+        "--cache-images",
+        action="store_true",
+        help="Load all (downscaled) images into RAM once at startup instead of "
+        "reading one image from disk per step",
+    )
+    ap.add_argument(
+        "--cache-workers",
+        type=int,
+        default=8,
+        help="Parallel image loader threads for --cache-images",
+    )
     ap.add_argument("--max-steps", type=int, default=30000)
     ap.add_argument("--test-every", type=int, default=8)
     ap.add_argument("--sh-degree", type=int, default=3)
@@ -77,6 +100,8 @@ def main() -> None:
         device=args.device,
         resume=args.resume,
         ckpt_every=args.ckpt_every,
+        cache_images=args.cache_images,
+        cache_workers=args.cache_workers,
     )
     out = train(cfg)
     print(f"Training finished. Results in {out}")

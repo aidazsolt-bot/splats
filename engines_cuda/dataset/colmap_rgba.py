@@ -100,12 +100,14 @@ class ColmapRGBADataset(Dataset):
 
         self.resize_to = resize_to
         self.cameras = cameras
+        self._cache: Dict[int, np.ndarray] = {}
 
     def __len__(self) -> int:
         return len(self.frames)
 
-    def _load_rgba(self, path: Path) -> Tuple[np.ndarray, np.ndarray]:
-        im = Image.open(path).convert("RGBA")
+    def _load_rgba_u8(self, path: Path) -> np.ndarray:
+        with Image.open(path) as src:
+            im = src.convert("RGBA")
         if self.data_factor > 1:
             w, h = im.size
             im = im.resize(
@@ -114,12 +116,34 @@ class ColmapRGBADataset(Dataset):
             )
         if self.resize_to is not None:
             im = im.resize(self.resize_to, Image.BICUBIC)
-        arr = np.asarray(im).astype(np.float32) / 255.0
-        return arr[..., :3], arr[..., 3]
+        return np.ascontiguousarray(np.asarray(im, dtype=np.uint8))
+
+    def preload(self, workers: int = 8, label: str = "") -> None:
+        """Decode + downscale all images once into RAM (uint8) so training never re-reads disk/network."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        todo = [i for i in range(len(self.frames)) if i not in self._cache]
+        if not todo:
+            return
+        tag = f"[{label}] " if label else ""
+        total = len(todo)
+        nbytes = 0
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            futs = {ex.submit(self._load_rgba_u8, self.frames[i]["path"]): i for i in todo}
+            for n, fut in enumerate(as_completed(futs), 1):
+                arr = fut.result()
+                self._cache[futs[fut]] = arr
+                nbytes += arr.nbytes
+                if n == total or n % 10 == 0:
+                    print(f"  {tag}cached {n}/{total} images ({nbytes / 2**20:.0f} MiB)", flush=True)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         fr = self.frames[idx]
-        rgb, alpha = self._load_rgba(fr["path"])
+        u8 = self._cache.get(idx)
+        if u8 is None:
+            u8 = self._load_rgba_u8(fr["path"])
+        arr = u8.astype(np.float32) / 255.0
+        rgb, alpha = arr[..., :3], arr[..., 3]
         h, w = rgb.shape[:2]
         K = fr["K"].copy()
         if self.data_factor > 1 or self.resize_to is not None:

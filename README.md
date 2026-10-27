@@ -21,7 +21,8 @@ python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-s
 
 Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
 
-Optional flags: `--data-factor 2`, `--out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out"`, `--smoke` (short verification run).
+Optional flags: `--data-factor 2` (default `1` = original resolution), `--cache-images` (preload images into RAM), `--out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out"`, `--smoke` (short verification run).
+`--cache-images` and `--cache-workers` (number of parallel threads that read/decode/downscale images during the one-time preload; default `8`) can be changed freely between resumed runs; `--data-factor` must stay the same.
 
 Details: [`engines_cuda/README.md`](engines_cuda/README.md)
 
