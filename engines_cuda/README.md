@@ -1,5 +1,7 @@
 # engines_cuda - photorealistic 3DGS training (PyTorch + gsplat)
 
+**Windows `cl.exe` / Ninja setup:** [install and activate the build tools](../WINDOWS_CUDA_SETUP.md).
+
 Learned Gaussian splats via gradient descent (same family as Postshot / Inria 3DGS),
 with **alpha-masked** photometric loss for cut-out macro subjects (Blackberry RGBA).
 
