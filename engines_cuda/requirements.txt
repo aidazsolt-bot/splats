@@ -1,14 +1,15 @@
 # Install on a machine with NVIDIA GPU + matching CUDA toolkit.
-# Example (CUDA 12.1):
-#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# Install a PyTorch wheel whose CUDA version matches the machine/runtime.
+# Example (CUDA 13.4):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu134
 #   python -m pip install -r engines_cuda/requirements.txt
+#   BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 #   python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 #
 # pytorch3d is separate: its setup imports torch, so pip build isolation fails
 # unless torch is already installed and --no-build-isolation is used.
 
-torch>=2.1.0
-gsplat>=1.4.0
+torch>=2.7.0
 ninja
 numpy
 pillow

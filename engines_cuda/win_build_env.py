@@ -99,6 +99,7 @@ def setup() -> None:
         return
     if "gsplat.cuda._backend" in sys.modules:
         return
+    os.environ.setdefault("MAX_JOBS", "1")
     _activate_msvc()
     _patch_jit_flags()
     if not os.environ.get("TORCH_CUDA_ARCH_LIST"):

@@ -28,7 +28,11 @@ python .\engines_cuda\run_train.py --resume `
   --max-steps 45000 --data-factor 1 --antialiased
 ```
 
-CUDA Toolkit 12.1 + MSVC + ninja: see [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
+CUDA Toolkit matching the PyTorch CUDA runtime + MSVC + Ninja: see
+[`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
+The shared trainer now requires PyTorch >=2.7 and pins gsplat 1.6.0 to
+upstream commit `512d366`. The Colab notebook installs that source with
+`BUILD_NO_CUDA=1` and uses one CUDA build job to limit peak host memory.
 
 ## Train recipe
 

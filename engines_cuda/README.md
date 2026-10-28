@@ -20,18 +20,31 @@ Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUD
 On a GPU machine:
 
 ```bash
-python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu134
 python -m pip install -r engines_cuda/requirements.txt
+BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
 # Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
-Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
+The pinned gsplat source is upstream commit `512d366` (version 1.6.0). It
+requires PyTorch 2.7 or newer. Choose the PyTorch CUDA wheel for the target
+runtime; the `cu134` command above is for the CUDA 13.4 workstation, not a
+universal Colab setting. `BUILD_NO_CUDA=1` defers extension compilation until
+the first gsplat CUDA call.
+
+On Windows PowerShell, install the pinned gsplat source with:
+
+```powershell
+$env:BUILD_NO_CUDA = "1"
+python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
+Remove-Item Env:BUILD_NO_CUDA
+```
 
 ### Windows: gsplat CUDA extension build
 
-Tested working setup (training ran to step 20000 with this toolchain):
+Previously tested setup (training ran to step 20000):
 
 | Component | Version |
 |--|--|
@@ -49,7 +62,13 @@ Tested working setup (training ran to step 20000 with this toolchain):
 
 MSVC 17.14 is newer than CUDA 12.1 officially supports; [win_build_env.py](win_build_env.py)
 adds `-allow-unsupported-compiler` and `_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH`
-to make this combination build.
+to make this older combination build.
+
+Current CUDA 13.4 update on the same Windows host: Python 3.12,
+PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92, and gsplat 1.6.0. The gsplat
+extension has not yet built successfully with this combination: the serial
+build reaches `ProjectionUT3DGSFused.cu` and fails on `std::isfinite` being
+host-only in `Cameras.cuh`. Do not treat this stack as training-ready yet.
 
 If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
 requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and
@@ -73,6 +92,8 @@ python -c "import torch; print(torch.__version__, torch.version.cuda)"
 directory to `PATH` (for a user install, locate it with
 `python -m site --user-site` and replace the trailing `site-packages` with
 `Scripts`). Match the installed CUDA toolkit to `torch.version.cuda`.
+On memory-limited Windows systems, `win_build_env.py` defaults CUDA extension
+compilation to one job; set `MAX_JOBS` explicitly to override it.
 
 The initial `ImportError: cannot import name 'csrc' from 'gsplat'` triggers this
 build fallback; the final build error is the one to resolve. Merely importing
