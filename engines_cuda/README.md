@@ -22,6 +22,7 @@ On a GPU machine:
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
 python -m pip install -r engines_cuda/requirements.txt
+python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
 # Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
@@ -202,7 +203,7 @@ Outputs:
 
 ## Mesh from trained means
 
-Default backend is **Open3D Poisson**. Optional **PyTorch3D** path voxelizes means and runs `cubify` (`--backend pytorch3d`; install `pytorch3d` separately).
+Default backend is **Open3D Poisson**. Optional **PyTorch3D** path voxelizes means and runs `cubify` (`--backend pytorch3d`; install via `requirements-pytorch3d.txt` with `--no-build-isolation`).
 
 ```bash
 python export/mesh_from_ckpt.py \

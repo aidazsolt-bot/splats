@@ -2,6 +2,10 @@
 # Example (CUDA 12.1):
 #   pip install torch --index-url https://download.pytorch.org/whl/cu121
 #   python -m pip install -r engines_cuda/requirements.txt
+#   python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
+#
+# pytorch3d is separate: its setup imports torch, so pip build isolation fails
+# unless torch is already installed and --no-build-isolation is used.
 
 torch>=2.1.0
 gsplat>=1.4.0
@@ -12,5 +16,3 @@ scipy
 tqdm
 open3d
 imageio
-# Mesh --backend pytorch3d (builds against the already-installed torch)
-pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git

@@ -67,8 +67,8 @@ python engines_cuda/export/mesh_from_ckpt.py \
   --ckpt "$OUT/ckpt_45000.pt" \
   --out "$OUT/mesh_from_splat.ply"
 
-# Optional: PyTorch3D voxel cubify (install pytorch3d first)
-pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+# PyTorch3D voxel cubify (after requirements.txt; needs --no-build-isolation)
+pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 python engines_cuda/export/mesh_from_ckpt.py \
   --ckpt "$OUT/ckpt_45000.pt" \
   --out "$OUT/mesh_from_splat_p3d.ply" \

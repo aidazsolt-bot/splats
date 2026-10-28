@@ -50,6 +50,7 @@ Pin: Torch **`cu121`** + CUDA Toolkit **12.1** + MSVC + `ninja`.
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r engines_cuda/requirements.txt
+pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 
 # Windows - MCMC / Postshot-like candidate
 python .\engines_cuda\run_train.py --resume `
