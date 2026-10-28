@@ -159,11 +159,13 @@ def write_mesh_inc(path: Path, mesh_path: Path, max_faces: int = 200000) -> Tupl
         lines.append(f"    {_fmt_vec(v)},")
     lines[-1] = lines[-1].rstrip(",")
     lines.append("  }")
+    # Vertex colors from photos / SH-DC are display-referred -> srgb (POV 3.8+)
     lines.append(f"  texture_list {{ {n_v},")
     for c in cols:
         lines.append(
-            f"    texture {{ pigment {{ rgb <{c[0]:.4f}, {c[1]:.4f}, {c[2]:.4f}> }} "
-            f"finish {{ ambient 0.25 diffuse 0.7 specular 0.05 }} }},"
+            # Photo/SH vertex colors: show as-is (ambient), light adds a little shape
+            f"    texture {{ pigment {{ srgb <{c[0]:.4f}, {c[1]:.4f}, {c[2]:.4f}> }} "
+            f"finish {{ ambient 0.85 diffuse 0.25 emission 0.05 specular 0.02 }} }},"
         )
     lines[-1] = lines[-1].rstrip(",")
     lines.append("  }")
@@ -249,6 +251,15 @@ def write_photo_billboards_inc(
     return count
 
 
+def write_assimp_mesh_inc(path: Path, mesh_rel: str) -> None:
+    """POV-Ray 3.8+ Assimp importer (OBJ/MTL/PLY with materials)."""
+    path.write_text(
+        f"// Assimp mesh (relative to scene dir)\n"
+        f'assimp {{ "{mesh_rel}" }}\n',
+        encoding="utf-8",
+    )
+
+
 def write_master_pov(
     path: Path,
     width: int,
@@ -259,13 +270,17 @@ def write_master_pov(
     use_billboards: bool,
 ) -> None:
     parts = [
-        "// Blackberry / COLMAP scene for POV-Ray",
+        "// Blackberry / COLMAP scene for POV-Ray 3.8 (local povray.git build)",
+        "// Prefer: ../povray.git/unix/povray  File_Gamma=sRGB Display_Gamma=sRGB",
         "// Render example:",
-        f"//   povray +W{width} +H{height} +A0.3 -D Declare=CAM_INDEX={camera_index} scene.pov",
+        f"//   povray +W{width} +H{height} +A0.3 -D File_Gamma=sRGB Declare=CAM_INDEX={camera_index} scene.pov",
         "",
-        '#version 3.7;',
-        "global_settings { assumed_gamma 1.0 }",
-        "background { color rgb <0.02, 0.02, 0.03> }",
+        "#version 3.8;",
+        "global_settings {",
+        "  assumed_gamma 1.0",
+        "  ambient_light rgb 1",
+        "}",
+        "background { color srgb <0.02, 0.02, 0.03> }",
         "",
         '#include "cameras.inc"',
         "",
@@ -274,11 +289,11 @@ def write_master_pov(
         "#end",
         "UseCamera(CAM_INDEX)",
         "",
-        "// Soft key + fill",
+        "// Soft key + fill (linear light intensities)",
         "light_source { <50, 80, -40> color rgb 1.2 }",
         "light_source { <-30, 40, 60> color rgb 0.45 }",
         "",
-        "// OpenCV/COLMAP -> optional axis flip for POV Y-up feel",
+        "// OpenCV/COLMAP -> POV Y-up feel",
         "#declare WorldXform = transform { scale <1, -1, -1> };",
         "",
         "object {",
@@ -292,7 +307,7 @@ def write_master_pov(
     if not use_mesh and not use_points and not use_billboards:
         parts += [
             "  // Fallback marker",
-            "  sphere { <0,0,0>, 0.2 pigment { rgb <1,0,0> } }",
+            "  sphere { <0,0,0>, 0.2 pigment { srgb <1,0,0> } }",
         ]
     parts += [
         "  transform { WorldXform }",
@@ -343,7 +358,13 @@ def main() -> None:
         "--mesh",
         type=Path,
         default=None,
-        help="Optional triangle mesh (ply/obj) with vertex colors",
+        help="Optional triangle mesh (ply/obj) with vertex colors / MTL",
+    )
+    ap.add_argument(
+        "--mesh-mode",
+        choices=("assimp", "mesh2"),
+        default="assimp",
+        help="assimp=POV 3.8 Assimp import (OBJ/MTL); mesh2=inline vertex colors",
     )
     ap.add_argument("--camera-index", type=int, default=0)
     ap.add_argument("--max-points", type=int, default=25000)
@@ -368,9 +389,34 @@ def main() -> None:
             mesh_path = cand
     if mesh_path is not None and Path(mesh_path).is_file():
         try:
-            nv, nf = write_mesh_inc(out / "geometry_mesh.inc", Path(mesh_path), max_faces=args.max_faces)
-            print(f"Wrote mesh: {nv} verts, {nf} faces")
-            use_mesh = True
+            mesh_path = Path(mesh_path).resolve()
+            if args.mesh_mode == "assimp":
+                import shutil
+
+                mesh_dir = out / "mesh"
+                mesh_dir.mkdir(parents=True, exist_ok=True)
+                dst = mesh_dir / mesh_path.name
+                shutil.copy2(mesh_path, dst)
+                # Bring MTL + atlas siblings for Wavefront materials
+                for sib in mesh_path.parent.glob(mesh_path.stem + ".*"):
+                    if sib.resolve() == mesh_path:
+                        continue
+                    if sib.suffix.lower() in {".mtl", ".png", ".jpg", ".jpeg"}:
+                        shutil.copy2(sib, mesh_dir / sib.name)
+                # also stem_atlas.png naming
+                for sib in mesh_path.parent.glob(mesh_path.stem + "_*"):
+                    if sib.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                        shutil.copy2(sib, mesh_dir / sib.name)
+                rel = f"mesh/{dst.name}"
+                write_assimp_mesh_inc(out / "geometry_mesh.inc", rel)
+                print(f"Wrote Assimp mesh include -> {rel}")
+                use_mesh = True
+            else:
+                nv, nf = write_mesh_inc(
+                    out / "geometry_mesh.inc", mesh_path, max_faces=args.max_faces
+                )
+                print(f"Wrote mesh2: {nv} verts, {nf} faces (srgb pigments)")
+                use_mesh = True
         except Exception as e:
             print(f"Mesh export failed ({e}), falling back to points")
 

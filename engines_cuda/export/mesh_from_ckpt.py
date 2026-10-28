@@ -2,7 +2,9 @@
 
 Backends:
   open3d     - Poisson reconstruction (default, usually better surfaces)
-  pytorch3d  - voxel occupancy + cubify (needs optional pytorch3d install)
+  pytorch3d  - voxel occupancy + cubify (needs pytorch3d)
+
+Writes PLY plus Wavefront OBJ + MTL (vertex-color atlas as map_Kd).
 """
 
 from __future__ import annotations
@@ -35,6 +37,111 @@ def _colorize_vertices(
     return rgb[idx]
 
 
+def _write_color_atlas(colors: np.ndarray, png_path: Path) -> np.ndarray:
+    """Pack per-vertex RGB into a PNG; return UVs in [0,1] (OpenGL-style, V up)."""
+    from PIL import Image
+
+    n = int(colors.shape[0])
+    w = int(np.ceil(np.sqrt(max(n, 1))))
+    h = int(np.ceil(n / w)) if n else 1
+    img = np.zeros((h * w, 3), dtype=np.uint8)
+    img[:n] = np.clip(np.rint(colors * 255.0), 0, 255).astype(np.uint8)
+    Image.fromarray(img.reshape(h, w, 3), mode="RGB").save(png_path)
+
+    uvs = np.zeros((n, 2), dtype=np.float64)
+    cols = np.arange(n) % w
+    rows = np.arange(n) // w
+    uvs[:, 0] = (cols + 0.5) / float(w)
+    uvs[:, 1] = 1.0 - (rows + 0.5) / float(h)
+    return uvs
+
+
+def write_wavefront_obj_mtl(
+    out_obj: Path,
+    verts: np.ndarray,
+    faces: np.ndarray,
+    colors: np.ndarray,
+) -> tuple[Path, Path, Path]:
+    """Write OBJ + MTL + vertex-color atlas PNG. Faces are 0-based triangles."""
+    out_obj = Path(out_obj)
+    if out_obj.suffix.lower() != ".obj":
+        out_obj = out_obj.with_suffix(".obj")
+    out_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    stem = out_obj.stem
+    mtl_name = f"{stem}.mtl"
+    png_name = f"{stem}_atlas.png"
+    out_mtl = out_obj.with_name(mtl_name)
+    out_png = out_obj.with_name(png_name)
+
+    uvs = _write_color_atlas(colors.astype(np.float64), out_png)
+    mean_kd = np.clip(colors.mean(axis=0), 0.0, 1.0)
+
+    out_mtl.write_text(
+        "# Auto-generated from Gaussian means mesh export\n"
+        "newmtl material0\n"
+        "Ka 1.000000 1.000000 1.000000\n"
+        f"Kd {mean_kd[0]:.6f} {mean_kd[1]:.6f} {mean_kd[2]:.6f}\n"
+        "Ks 0.000000 0.000000 0.000000\n"
+        "Ns 1.000000\n"
+        "d 1.000000\n"
+        "illum 1\n"
+        f"map_Kd {png_name}\n",
+        encoding="utf-8",
+    )
+
+    lines: list[str] = [
+        "# Wavefront OBJ from engines_cuda/export/mesh_from_ckpt.py\n",
+        f"mtllib {mtl_name}\n",
+        "usemtl material0\n",
+    ]
+    for (x, y, z), (r, g, b) in zip(verts, colors):
+        lines.append(
+            f"v {x:.8f} {y:.8f} {z:.8f} {r:.6f} {g:.6f} {b:.6f}\n"
+        )
+    for u, vv in uvs:
+        lines.append(f"vt {u:.8f} {vv:.8f}\n")
+    for a, b, c in faces.astype(np.int64):
+        # OBJ is 1-based; same index for v and vt
+        i, j, k = a + 1, b + 1, c + 1
+        lines.append(f"f {i}/{i} {j}/{j} {k}/{k}\n")
+    out_obj.write_text("".join(lines), encoding="utf-8")
+    print(
+        f"Wrote {out_obj} + {out_mtl.name} + {out_png.name} "
+        f"verts={verts.shape[0]} tris={faces.shape[0]}",
+        flush=True,
+    )
+    return out_obj, out_mtl, out_png
+
+
+def _save_mesh_outputs(
+    out: Path,
+    verts: np.ndarray,
+    faces: np.ndarray,
+    colors: np.ndarray,
+    backend: str,
+) -> None:
+    import open3d as o3d
+
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    ply_path = out if out.suffix.lower() == ".ply" else out.with_suffix(".ply")
+    obj_path = out if out.suffix.lower() == ".obj" else out.with_suffix(".obj")
+
+    mesh = o3d.geometry.TriangleMesh()
+    mesh.vertices = o3d.utility.Vector3dVector(verts.astype(np.float64))
+    mesh.triangles = o3d.utility.Vector3iVector(faces.astype(np.int32))
+    mesh.vertex_colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+    mesh.compute_vertex_normals()
+    o3d.io.write_triangle_mesh(str(ply_path), mesh, write_vertex_colors=True)
+    print(
+        f"Wrote {ply_path} backend={backend} verts={verts.shape[0]} "
+        f"tris={faces.shape[0]}",
+        flush=True,
+    )
+    write_wavefront_obj_mtl(obj_path, verts, faces, colors)
+
+
 def mesh_open3d_poisson(
     means: np.ndarray,
     rgb: np.ndarray,
@@ -54,15 +161,14 @@ def mesh_open3d_poisson(
     if dens.size:
         mesh.remove_vertices_by_mask(dens < np.quantile(dens, 0.02))
     mesh.compute_vertex_normals()
-    mesh.vertex_colors = o3d.utility.Vector3dVector(
-        _colorize_vertices(np.asarray(mesh.vertices), means, rgb)
-    )
-    out.parent.mkdir(parents=True, exist_ok=True)
-    o3d.io.write_triangle_mesh(str(out), mesh, write_vertex_colors=True)
-    print(
-        f"Wrote {out} backend=open3d verts={len(mesh.vertices)} "
-        f"tris={len(mesh.triangles)}",
-        flush=True,
+    colors = _colorize_vertices(np.asarray(mesh.vertices), means, rgb)
+    mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
+    _save_mesh_outputs(
+        out,
+        np.asarray(mesh.vertices),
+        np.asarray(mesh.triangles),
+        colors,
+        backend="open3d",
     )
 
 
@@ -74,15 +180,12 @@ def mesh_pytorch3d_cubify(
     thresh: float,
 ) -> None:
     try:
-        from pytorch3d.io import IO
         from pytorch3d.ops import cubify
-        from pytorch3d.renderer import TexturesVertex
-        from pytorch3d.structures import Meshes
     except ImportError as e:
         raise SystemExit(
             "pytorch3d is required for --backend pytorch3d. "
-            "Install a wheel matching your torch/CUDA, e.g. Colab: "
-            'pip install "git+https://github.com/facebookresearch/pytorch3d.git" '
+            "Install with: python -m pip install --no-build-isolation "
+            "-r engines_cuda/requirements-pytorch3d.txt "
             f"Original error: {e}"
         ) from e
 
@@ -97,12 +200,10 @@ def mesh_pytorch3d_cubify(
     hi = hi + pad
     extent = hi - lo
 
-    # Map world -> [0, grid_size-1]
     g = float(grid_size - 1)
     ijk = np.floor((means - lo) / extent * g).astype(np.int64)
     ijk = np.clip(ijk, 0, grid_size - 1)
     voxels = np.zeros((grid_size, grid_size, grid_size), dtype=np.float32)
-    # cubify expects (N, D, H, W) with D along z; use z,y,x indexing
     voxels[ijk[:, 2], ijk[:, 1], ijk[:, 0]] = 1.0
 
     import torch
@@ -118,30 +219,17 @@ def mesh_pytorch3d_cubify(
             "or higher --grid-size"
         )
 
-    # cubify verts are in [0, D] style voxel coords -> world
     verts_world = lo + (verts / g) * extent
     colors = _colorize_vertices(verts_world, means, rgb)
-
-    out.parent.mkdir(parents=True, exist_ok=True)
-    verts_t = torch.from_numpy(verts_world.astype(np.float32))
-    faces_t = torch.from_numpy(faces.astype(np.int64))
-    cols_t = torch.from_numpy(colors.astype(np.float32))
-    mesh_p3d = Meshes(
-        verts=[verts_t],
-        faces=[faces_t],
-        textures=TexturesVertex(verts_features=[cols_t]),
-    )
-    IO().save_mesh(mesh_p3d, str(out))
-    print(
-        f"Wrote {out} backend=pytorch3d verts={verts_world.shape[0]} "
-        f"tris={faces.shape[0]} grid={grid_size}",
-        flush=True,
-    )
+    _save_mesh_outputs(out, verts_world, faces, colors, backend="pytorch3d")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Mesh from trained Gaussian means (Open3D Poisson or PyTorch3D cubify)"
+        description=(
+            "Mesh from trained Gaussian means (Open3D Poisson or PyTorch3D cubify). "
+            "Writes PLY and Wavefront OBJ+MTL with vertex-color atlas."
+        )
     )
     ap.add_argument("--ckpt", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)

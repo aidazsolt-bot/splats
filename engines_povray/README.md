@@ -23,23 +23,28 @@ python engines_povray/colmap_to_pov.py \
   --mesh engines_out/mesh.ply \
   --billboards --billboard-every 8
 
-# 2) Render (requires povray on PATH)
+# 2) Render with local POV-Ray 3.8 build (../povray.git) + sRGB file gamma
 python engines_povray/render_views.py \
   --scene-dir povray_out \
   --indices 0,10,20 \
   --width 1280 --height 1920
+# override binary: --povray /path/to/povray  or  export POVRAY=...
 ```
+
+Default mesh import is **Assimp** (`--mesh-mode assimp`) for OBJ+MTL; use `--mesh-mode mesh2` for inline `srgb` vertex colors.
 
 Manual render:
 
 ```bash
 cd povray_out
-povray +W1280 +H1920 +A0.3 -D Declare=CAM_INDEX=0 scene.pov
+../povray.git/unix/povray +W1280 +H1920 +A0.3 -D File_Gamma=sRGB Declare=CAM_INDEX=0 scene.pov
 ```
 
 ## Install POV-Ray
 
-Not bundled. On a machine with package admin:
+Preferred on this lab host: build/binary at **`../povray.git/unix/povray`** (3.8 Assimp + colorspace).
+
+Fallback:
 
 - Fedora/RHEL: `dnf install povray`
 - Debian/Ubuntu: `apt install povray`

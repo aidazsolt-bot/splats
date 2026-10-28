@@ -30,10 +30,21 @@ python .\engines_cuda\run_train.py --resume `
 
 CUDA Toolkit 12.1 + MSVC + ninja: see [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
 
-## Train recipe (Postshot-like candidate)
+## Train recipe
+
+**Do not resume** the diverged run in `…/cuda_out_mcmc` (`splat_07000` means exploded).
+
+Notebook default (stable):
 
 ```text
---strategy mcmc --cap-max 200000 --max-steps 45000 --data-factor 1 --antialiased
+--strategy default --max-steps 30000 --data-factor 2 --antialiased
+# OUT: MyDrive/blackberry-splats/cuda_out_stable
+```
+
+MCMC only with low noise (`5e5` diverged on this COLMAP scale):
+
+```text
+--strategy mcmc --cap-max 200000 --noise-lr 5e3 --max-steps 30000 --data-factor 2 --antialiased
 ```
 
 | GPU | `--data-factor` | Notes |
@@ -41,7 +52,7 @@ CUDA Toolkit 12.1 + MSVC + ninja: see [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CU
 | T4 / GTX 1650 4 GB | `2`, then try `1` | 200k + factor 1 may OOM |
 | L4 / A100 | `1` | Closest to Dany-scale target |
 
-`--resume`: continues from `ckpt_latest.pt` if present; otherwise starts fresh (with a hint).
+`--resume`: only on a healthy `OUT` after disconnect. After first `splat_*.ply`, check AABB extent (~20-70, not 1e5).
 
 ## Dataset
 
@@ -57,7 +68,7 @@ MyDrive/blackberry-splats/dataset/
 X:\blackberry-splats\dataset\   (same layout)
 ```
 
-Notebook / note default `OUT`: `…/cuda_out_mcmc/`.
+Notebook default `OUT`: `…/cuda_out_stable/`.
 
 ## Mesh after train
 
