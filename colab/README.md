@@ -1,34 +1,38 @@
-# Google Colab training
+# Google Colab (`engines_cuda`)
 
-Colab runtimes usually have an **NVIDIA GPU + CUDA**. That matches `engines_cuda`
-(gsplat + PyTorch), not the CPU/OpenCL paths.
+Cloud GPU training with the **same** code as a local NVIDIA laptop.
+Branch: **`feature/colab-train` only**.
 
-**Branch:** only **`feature/colab-train`** (MCMC / antialiased / resume). Same tree for
-local NVIDIA laptop training via `engines_cuda` — Colab is optional cloud GPU.
+| Goal | Tool |
+|------|------|
+| Train photoreal splats | **gsplat** via `engines_cuda/run_train.py` |
+| Mesh from trained Gaussians | **`engines_cuda/export/mesh_from_ckpt.py`** (Open3D Poisson) |
+| Mesh without training | `engines/run_blackberry.py` |
 
-## PyTorch3D?
+PyTorch3D is **not** used in this pipeline (optional third-party lib; ignore it).
 
-**Yes, Colab can install PyTorch3D**, but it is a *different* stack:
+## Quick start (Colab)
 
-| Library | Role |
-|---------|------|
-| **gsplat** / `engines_cuda` | 3D Gaussian Splatting training (photoreal splats) |
-| **PyTorch3D** | meshes, point clouds, soft rasterization - not a 3DGS trainer |
-
-This folder's notebook uses **`engines_cuda` (gsplat)**. An optional cell shows a
-minimal PyTorch3D install for mesh experiments.
-
-## Quick start
-
-1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) in Colab  
-   (GitHub → Open in Colab, or upload the notebook).
-2. Runtime → Change runtime type → **GPU** (T4 / L4 / A100).
+1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) (GitHub → Open in Colab).
+2. Runtime → **GPU** (T4 / L4 / A100).
 3. Run cells: clone `feature/colab-train`, mount Drive, smoke, then MCMC train.
-4. Download `splat_*.ply` / keep `ckpt_latest.pt` on Drive for `--resume`.
+4. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
 
-## Full train recipe (Postshot-like candidate)
+## Same on Windows laptop
 
-Same as the local Windows note / `engines_cuda/STRATEGY_PLAN.md`:
+```powershell
+git checkout feature/colab-train
+git pull
+python .\engines_cuda\run_train.py --resume `
+  --data X:\blackberry-splats\dataset `
+  --out cuda_out_mcmc `
+  --strategy mcmc --cap-max 200000 `
+  --max-steps 45000 --data-factor 1 --antialiased
+```
+
+CUDA Toolkit 12.1 + MSVC + ninja: see [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
+
+## Train recipe (Postshot-like candidate)
 
 ```text
 --strategy mcmc --cap-max 200000 --max-steps 45000 --data-factor 1 --antialiased
@@ -36,29 +40,40 @@ Same as the local Windows note / `engines_cuda/STRATEGY_PLAN.md`:
 
 | GPU | `--data-factor` | Notes |
 |-----|----------------|-------|
-| T4 | `2` then try `1` | 200k + factor 1 may OOM |
+| T4 / GTX 1650 4 GB | `2`, then try `1` | 200k + factor 1 may OOM |
 | L4 / A100 | `1` | Closest to Dany-scale target |
 
-`--resume` with no checkpoint: hint + fresh start. With checkpoint: settings must match `cfg.json`.
+`--resume`: continues from `ckpt_latest.pt` if present; otherwise starts fresh (with a hint).
 
-## Dataset on Drive
+## Dataset
 
 ```text
+# Colab Drive
 MyDrive/blackberry-splats/dataset/
   cameras.txt
   images.txt
   points3D.txt
   images/*.png
+
+# Windows
+X:\blackberry-splats\dataset\   (same layout)
 ```
 
-Same layout as Linux `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset` and Windows `X:\blackberry-splats\dataset`.
+Notebook / note default `OUT`: `…/cuda_out_mcmc/`.
 
-Notebook default `OUT`: `MyDrive/blackberry-splats/cuda_out_mcmc/`.
+## Mesh after train
+
+```bash
+python engines_cuda/export/mesh_from_ckpt.py \
+  --ckpt "$OUT/ckpt_45000.pt" \
+  --out "$OUT/mesh_from_splat.ply"
+```
+
+(Also in the notebook, section 6.)
 
 ## Limits
 
-- Free Colab sessions can disconnect; prefer Drive paths for checkpoints.
-- gsplat must match the runtime's Torch/CUDA build (notebook installs for the session).
-- Mesa / Intel OpenCL / Huawei MateBook iGPUs are **not** substitutes for this path.
+- Free Colab can disconnect — checkpoints on Drive + `--resume`.
+- Needs real NVIDIA CUDA (Colab GPU or local Toolkit/`nvcc`); not Mesa / Intel-only.
 
-Full local CUDA docs: [`../engines_cuda/README.md`](../engines_cuda/README.md).
+More: [`../engines_cuda/README.md`](../engines_cuda/README.md), [`../engines_cuda/STRATEGY_PLAN.md`](../engines_cuda/STRATEGY_PLAN.md).
