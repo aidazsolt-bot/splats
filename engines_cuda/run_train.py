@@ -58,6 +58,40 @@ def main() -> None:
     ap.add_argument("--sh-degree", type=int, default=3)
     ap.add_argument("--ssim-lambda", type=float, default=0.2)
     ap.add_argument("--alpha-lambda", type=float, default=0.1)
+    ap.add_argument(
+        "--strategy",
+        choices=("legacy", "default", "mcmc"),
+        default=None,
+        help="Gaussian refinement strategy (new runs default to default; old checkpoints resume as legacy)",
+    )
+    ap.add_argument("--refine-start", type=int)
+    ap.add_argument(
+        "--refine-stop",
+        type=int,
+        help="Stop refinement (default: 15000 for default, 25000 for mcmc)",
+    )
+    ap.add_argument("--refine-every", type=int)
+    ap.add_argument("--prune-opa", type=float, default=0.005)
+    ap.add_argument("--grow-grad2d", type=float)
+    ap.add_argument("--absgrad", action="store_true")
+    ap.add_argument("--grow-scale3d", type=float)
+    ap.add_argument("--prune-scale3d", type=float)
+    ap.add_argument("--reset-every", type=int)
+    ap.add_argument("--pause-refine-after-reset", type=int)
+    ap.add_argument("--revised-opacity", action="store_true")
+    ap.add_argument("--cap-max", type=int, default=200000)
+    ap.add_argument("--noise-lr", type=float, default=5e5)
+    ap.add_argument(
+        "--opacity-reg",
+        type=float,
+        help="Opacity regularization (default 0.01 for mcmc, otherwise 0)",
+    )
+    ap.add_argument("--scale-reg", type=float, default=0.01)
+    ap.add_argument(
+        "--antialiased",
+        action="store_true",
+        help="Use gsplat's antialiased rasterization mode",
+    )
     ap.add_argument("--no-densify", action="store_true")
     ap.add_argument("--no-random-bkgd", action="store_true")
     ap.add_argument("--device", type=str, default="cuda")
@@ -95,6 +129,23 @@ def main() -> None:
         sh_degree=args.sh_degree,
         ssim_lambda=args.ssim_lambda,
         alpha_lambda=args.alpha_lambda,
+        strategy=args.strategy,
+        refine_start=args.refine_start,
+        refine_stop=args.refine_stop,
+        refine_every=args.refine_every,
+        prune_opa=args.prune_opa,
+        grow_grad2d=args.grow_grad2d,
+        absgrad=args.absgrad,
+        grow_scale3d=args.grow_scale3d,
+        prune_scale3d=args.prune_scale3d,
+        reset_every=args.reset_every,
+        pause_refine_after_reset=args.pause_refine_after_reset,
+        revised_opacity=args.revised_opacity,
+        cap_max=args.cap_max,
+        noise_lr=args.noise_lr,
+        opacity_reg=args.opacity_reg,
+        scale_reg=args.scale_reg,
+        antialiased=args.antialiased,
         densify=not args.no_densify,
         random_bkgd=not args.no_random_bkgd,
         device=args.device,

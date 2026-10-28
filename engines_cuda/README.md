@@ -143,6 +143,47 @@ python engines_cuda/run_train.py --resume --data X:\blackberry-splats\dataset --
 
 Both cache options can be changed between resumed runs.
 
+### Refinement strategies
+
+New runs use gsplat's `DefaultStrategy` unless `--strategy` is specified.
+Available strategies:
+
+- `--strategy default`: screen-space-gradient cloning/splitting, low-opacity and
+  oversized-splat pruning. Main options: `--refine-start` (500),
+  `--refine-stop` (15000), `--refine-every` (100), `--grow-grad2d` (0.0002),
+  `--grow-scale3d` (0.01), `--prune-scale3d` (0.1), `--prune-opa` (0.005),
+  `--reset-every` (3000), `--pause-refine-after-reset` (0), `--absgrad`, and
+  `--revised-opacity`. With `--absgrad`, the default `--grow-grad2d` threshold
+  is 0.0008 instead of 0.0002.
+- `--strategy mcmc`: gsplat's fixed-budget MCMC refinement; low-opacity splats
+  are relocated and new splats are added up to `--cap-max` (default 200000).
+  Other options include `--refine-stop` (25000), `--refine-every` (100),
+  `--prune-opa` (0.005), and `--noise-lr` (500000). The cap limits additions;
+  it does not reduce a checkpoint that already exceeds the cap.
+- `--strategy legacy`: retain the repository's original custom refinement
+  behavior.
+
+`--opacity-reg` defaults to 0.01 for MCMC and 0 otherwise; `--scale-reg`
+defaults to 0.01. `--antialiased` enables gsplat antialiased rasterization.
+`--no-densify` disables all strategy refinement (including MCMC relocation and
+noise). Strategy configuration and refinement state are checkpointed.
+
+Resuming a pre-strategy checkpoint with no `--strategy` flag automatically
+selects `legacy`. New checkpoints require the same strategy and its relevant
+parameters when resumed. Cache options may still be changed between runs.
+
+Example:
+
+```powershell
+python engines_cuda/run_train.py --data X:\blackberry-splats\dataset --out cuda_mcmc `
+  --data-factor 4 --strategy mcmc --cap-max 200000 --max-steps 45000
+```
+
+On the GTX 1650 with 4 GB VRAM, treat the MCMC cap as tunable: image resolution,
+view count and rendering workspace also affect memory use. If CUDA runs out of
+memory, stop and resume with the same output directory and a lower cap only if
+the current Gaussian count is already below it; otherwise start a new run.
+
 `--resume` starts a new run if no checkpoint exists. Otherwise it restores the
 Gaussians, optimizer state, and training step, rejecting incompatible settings.
 `ckpt_latest.pt` is saved every `--ckpt-every` steps (default 500), at numbered

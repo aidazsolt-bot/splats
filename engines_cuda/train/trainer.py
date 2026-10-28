@@ -47,6 +47,10 @@ CUDA_RESUME_KEYS = (
     "densify",
     "random_bkgd",
     "seed",
+    "opacity_reg",
+    "scale_reg",
+    "antialiased",
+    "strategy",
 )
 
 
@@ -63,8 +67,8 @@ class TrainConfig:
     sh_degree_interval: int = 1000
     ssim_lambda: float = 0.2
     alpha_lambda: float = 0.1
-    opacity_reg: float = 0.0
-    scale_reg: float = 0.01
+    opacity_reg: Optional[float] = None
+    scale_reg: Optional[float] = None
     means_lr: float = 1.6e-4
     scales_lr: float = 5e-3
     quats_lr: float = 1e-3
@@ -90,6 +94,94 @@ class TrainConfig:
     ckpt_every: int = 500
     cache_images: bool = False
     cache_workers: int = 8
+    strategy: Optional[str] = None
+    refine_start: Optional[int] = None
+    refine_stop: Optional[int] = None
+    refine_every: Optional[int] = None
+    grow_grad2d: Optional[float] = None
+    absgrad: bool = False
+    grow_scale3d: Optional[float] = None
+    prune_scale3d: Optional[float] = None
+    reset_every: Optional[int] = None
+    pause_refine_after_reset: Optional[int] = None
+    revised_opacity: bool = False
+    cap_max: Optional[int] = None
+    noise_lr: Optional[float] = None
+    antialiased: bool = False
+
+
+def _normalize_strategy_config(cfg: TrainConfig, saved_cfg: Optional[dict]) -> None:
+    if cfg.strategy is None:
+        cfg.strategy = (saved_cfg.get("strategy") or "legacy") if saved_cfg is not None else "default"
+    if cfg.strategy not in ("legacy", "default", "mcmc"):
+        raise ValueError(f"Unknown strategy {cfg.strategy!r}; expected legacy, default, or mcmc")
+
+    mcmc = cfg.strategy == "mcmc"
+    if cfg.opacity_reg is None:
+        cfg.opacity_reg = 0.01 if mcmc else 0.0
+    if cfg.scale_reg is None:
+        cfg.scale_reg = 0.01
+    if cfg.refine_start is None:
+        cfg.refine_start = 500
+    if cfg.refine_stop is None:
+        cfg.refine_stop = 25000 if mcmc else 15000
+    if cfg.refine_every is None:
+        cfg.refine_every = 100
+    if cfg.grow_grad2d is None:
+        cfg.grow_grad2d = 0.0008 if cfg.absgrad else 0.0002
+    if cfg.grow_scale3d is None:
+        cfg.grow_scale3d = 0.01
+    if cfg.prune_scale3d is None:
+        cfg.prune_scale3d = 0.1
+    if cfg.reset_every is None:
+        cfg.reset_every = 3000
+    if cfg.pause_refine_after_reset is None:
+        cfg.pause_refine_after_reset = 0
+    if cfg.cap_max is None:
+        cfg.cap_max = 200000
+    if cfg.noise_lr is None:
+        cfg.noise_lr = 5e5
+    if cfg.strategy != "default" and (cfg.absgrad or cfg.revised_opacity):
+        raise ValueError("--absgrad and --revised-opacity require --strategy default")
+
+
+def _strategy_resume_keys(strategy: str) -> tuple:
+    keys = list(CUDA_RESUME_KEYS)
+    if strategy == "legacy":
+        keys.append("prune_opa")
+    elif strategy == "default":
+        keys.extend(
+            (
+                "refine_start",
+                "refine_stop",
+                "refine_every",
+                "prune_opa",
+                "grow_grad2d",
+                "absgrad",
+                "grow_scale3d",
+                "prune_scale3d",
+                "reset_every",
+                "pause_refine_after_reset",
+                "revised_opacity",
+            )
+        )
+    else:
+        keys.extend(
+            (
+                "refine_start",
+                "refine_stop",
+                "refine_every",
+                "prune_opa",
+                "cap_max",
+                "noise_lr",
+            )
+        )
+    return tuple(keys)
+
+
+def _sync_model_from_params(model: GaussianModel, params: dict) -> None:
+    for name in ("means", "scales", "quats", "opacities", "colors_dc", "colors_rest"):
+        setattr(model, name, params[name])
 
 
 def _require_cuda(device: str) -> torch.device:
@@ -157,7 +249,10 @@ def _build_optimizers(model: GaussianModel, cfg: TrainConfig, scene_scale: float
     }
 
 
-def _rasterize(model: GaussianModel, viewmats, Ks, width, height, sh_degree_active, near, far):
+def _rasterize(
+    model: GaussianModel, viewmats, Ks, width, height, sh_degree_active, near, far,
+    absgrad: bool = False, rasterize_mode: str = "classic",
+):
     from gsplat.rendering import rasterization
 
     means = model.means
@@ -181,6 +276,8 @@ def _rasterize(model: GaussianModel, viewmats, Ks, width, height, sh_degree_acti
         sh_degree=sh_degree_active,
         render_mode="RGB",
         packed=False,
+        absgrad=absgrad,
+        rasterize_mode=rasterize_mode,
     )
     # render_colors: B H W C, render_alphas: B H W 1
     return render_colors, render_alphas.squeeze(-1), info
@@ -266,8 +363,35 @@ def _cfg_dict(cfg: TrainConfig) -> dict:
     return d
 
 
-def _pack_ckpt(cfg: TrainConfig, model: GaussianModel, step: int, optimizers: dict) -> dict:
-    return {
+def _state_to_cpu(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _state_to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_state_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_state_to_cpu(item) for item in value)
+    return value
+
+
+def _state_to_device(value, device: torch.device):
+    if isinstance(value, torch.Tensor):
+        return value.to(device)
+    if isinstance(value, dict):
+        return {key: _state_to_device(item, device) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_state_to_device(item, device) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_state_to_device(item, device) for item in value)
+    return value
+
+
+def _pack_ckpt(
+    cfg: TrainConfig, model: GaussianModel, step: int, optimizers: dict,
+    strategy_state: Optional[dict] = None,
+) -> dict:
+    payload = {
         "step": step,
         "pipeline": "engines_cuda",
         "means": model.means.detach().cpu(),
@@ -280,12 +404,16 @@ def _pack_ckpt(cfg: TrainConfig, model: GaussianModel, step: int, optimizers: di
         "optimizers": {k: opt.state_dict() for k, opt in optimizers.items()},
         "cfg": _cfg_dict(cfg),
     }
+    if strategy_state is not None:
+        payload["strategy_state"] = _state_to_cpu(strategy_state)
+    return payload
 
 
 def _save_cuda_ckpt(
-    out: Path, cfg: TrainConfig, model: GaussianModel, step: int, optimizers: dict, named: bool
+    out: Path, cfg: TrainConfig, model: GaussianModel, step: int, optimizers: dict,
+    named: bool, strategy_state: Optional[dict] = None,
 ) -> None:
-    payload = _pack_ckpt(cfg, model, step, optimizers)
+    payload = _pack_ckpt(cfg, model, step, optimizers, strategy_state)
     also = out / f"ckpt_{step:05d}.pt" if named else None
     save_checkpoint(out, payload, also_named=also)
     if named:
@@ -323,7 +451,6 @@ def train(cfg: TrainConfig) -> Path:
 
     out = Path(cfg.out)
     out.mkdir(parents=True, exist_ok=True)
-    cfg_dict = _cfg_dict(cfg)
 
     print(f"[startup] Loading COLMAP dataset from {cfg.data}...", flush=True)
     train_ds = ColmapRGBADataset(
@@ -345,8 +472,9 @@ def train(cfg: TrainConfig) -> Path:
     else:
         print("[startup] Image cache off: loading one image from disk per step", flush=True)
 
-    start_step = 0
     ckpt_path = resolve_resume_checkpoint(out, cfg.resume)
+    saved = None
+    saved_cfg = None
     if ckpt_path is not None:
         print(f"[startup] Loading checkpoint {ckpt_path}...", flush=True)
         saved = load_checkpoint(ckpt_path, map_location="cpu")
@@ -355,7 +483,22 @@ def train(cfg: TrainConfig) -> Path:
             from engines_common.resume import load_cfg
 
             saved_cfg = load_cfg(out)
-        assert_same_settings(saved_cfg, cfg_dict, CUDA_RESUME_KEYS)
+    _normalize_strategy_config(cfg, saved_cfg)
+    cfg_dict = _cfg_dict(cfg)
+    start_step = 0
+    if saved is not None:
+        if saved_cfg is None:
+            raise RuntimeError(f"Checkpoint {ckpt_path} has no configuration")
+        # Checkpoints predating strategy selection always used the legacy path.
+        saved_cfg = dict(saved_cfg)
+        if not saved_cfg.get("strategy"):
+            saved_cfg["strategy"] = "legacy"
+        saved_cfg.setdefault("antialiased", False)
+        if saved_cfg.get("opacity_reg") is None:
+            saved_cfg["opacity_reg"] = 0.0
+        if saved_cfg.get("scale_reg") is None:
+            saved_cfg["scale_reg"] = 0.01
+        assert_same_settings(saved_cfg, cfg_dict, _strategy_resume_keys(cfg.strategy))
         start_step = int(saved["step"])
         if start_step >= cfg.max_steps:
             print(f"Already finished at step={start_step}; nothing to resume")
@@ -386,6 +529,45 @@ def train(cfg: TrainConfig) -> Path:
         model = GaussianModel(init, sh_degree=cfg.sh_degree)
         optimizers = _build_optimizers(model, cfg, init.scene_scale)
 
+    params = model.parameters_dict()
+    strategy_impl = None
+    strategy_state = None
+    if cfg.strategy != "legacy":
+        from gsplat import DefaultStrategy, MCMCStrategy
+
+        if cfg.strategy == "default":
+            strategy_impl = DefaultStrategy(
+                prune_opa=cfg.prune_opa,
+                grow_grad2d=cfg.grow_grad2d,
+                grow_scale3d=cfg.grow_scale3d,
+                prune_scale3d=cfg.prune_scale3d,
+                refine_start_iter=cfg.refine_start,
+                refine_stop_iter=cfg.refine_stop,
+                refine_every=cfg.refine_every,
+                reset_every=cfg.reset_every,
+                pause_refine_after_reset=cfg.pause_refine_after_reset,
+                absgrad=cfg.absgrad,
+                revised_opacity=cfg.revised_opacity,
+                verbose=True,
+            )
+        else:
+            strategy_impl = MCMCStrategy(
+                cap_max=cfg.cap_max,
+                noise_lr=cfg.noise_lr,
+                refine_start_iter=cfg.refine_start,
+                refine_stop_iter=cfg.refine_stop,
+                refine_every=cfg.refine_every,
+                min_opacity=cfg.prune_opa,
+                verbose=True,
+            )
+        strategy_impl.check_sanity(params, optimizers)
+        if cfg.strategy == "default":
+            strategy_state = strategy_impl.initialize_state(model.scene_scale)
+        else:
+            strategy_state = strategy_impl.initialize_state()
+        if saved is not None and saved.get("strategy_state") is not None:
+            strategy_state = _state_to_device(saved["strategy_state"], device)
+
     # Means LR scheduler like 3DGS (exponential decay)
     means_gamma = 0.01 ** (1.0 / max(cfg.max_steps, 1))
     means_sched = torch.optim.lr_scheduler.ExponentialLR(
@@ -400,7 +582,8 @@ def train(cfg: TrainConfig) -> Path:
     loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
     it = iter(loader)
 
-    # Running mean of view-space positional gradients for densify
+    # Legacy accumulates gradients in world space; gsplat strategies track
+    # screen-space gradients and visibility in their own state.
     grad_accum = torch.zeros(model.means.shape[0], 3, device=device)
     grad_count = torch.zeros(model.means.shape[0], device=device)
 
@@ -410,7 +593,7 @@ def train(cfg: TrainConfig) -> Path:
     print(
         f"Train start: views={len(train_ds)} test={len(test_ds)} "
         f"init_gauss={model.means.shape[0]} factor={cfg.data_factor} "
-        f"steps={start_step + 1}..{cfg.max_steps}",
+        f"steps={start_step + 1}..{cfg.max_steps} strategy={cfg.strategy}",
         flush=True,
     )
 
@@ -443,7 +626,9 @@ def train(cfg: TrainConfig) -> Path:
                     flush=True,
                 )
             colors, alphas, info = _rasterize(
-                model, viewmat, K, w, h, active_sh, cfg.near, cfg.far
+                model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+                absgrad=cfg.strategy == "default" and cfg.absgrad,
+                rasterize_mode="antialiased" if cfg.antialiased else "classic",
             )
             if step == start_step + 1:
                 print("[startup] Rasterization returned; computing loss and gradients...", flush=True)
@@ -470,10 +655,12 @@ def train(cfg: TrainConfig) -> Path:
 
             for opt in optimizers.values():
                 opt.zero_grad(set_to_none=True)
+            if cfg.densify and cfg.strategy == "default":
+                strategy_impl.step_pre_backward(params, optimizers, strategy_state, step, info)
             loss.backward()
 
-            # Accumulate densify grads
-            if model.means.grad is not None:
+            # The legacy strategy accumulates 3D means gradients.
+            if cfg.strategy == "legacy" and model.means.grad is not None:
                 g = model.means.grad.detach()
                 # resize accum if densified
                 if grad_accum.shape[0] != g.shape[0]:
@@ -482,13 +669,22 @@ def train(cfg: TrainConfig) -> Path:
                 grad_accum += g.abs()
                 grad_count += 1.0
 
+            lr_means = optimizers["means"].param_groups[0]["lr"]
             for opt in optimizers.values():
                 opt.step()
             means_sched.step()
 
-            # Densify / prune
-            if (
-                cfg.densify
+            if cfg.densify and cfg.strategy == "default":
+                strategy_impl.step_post_backward(params, optimizers, strategy_state, step, info)
+                _sync_model_from_params(model, params)
+            elif cfg.densify and cfg.strategy == "mcmc":
+                strategy_impl.step_post_backward(
+                    params, optimizers, strategy_state, step, info, lr=lr_means
+                )
+                _sync_model_from_params(model, params)
+            elif (
+                cfg.strategy == "legacy"
+                and cfg.densify
                 and cfg.densify_start <= step <= cfg.densify_stop
                 and step % cfg.densify_every == 0
             ):
@@ -502,7 +698,12 @@ def train(cfg: TrainConfig) -> Path:
                     gamma=0.01 ** (1.0 / max(cfg.max_steps - step, 1)),
                 )
 
-            if cfg.opacity_reset_interval > 0 and step % cfg.opacity_reset_interval == 0 and step < cfg.densify_stop:
+            if (
+                cfg.strategy == "legacy"
+                and cfg.opacity_reset_interval > 0
+                and step % cfg.opacity_reset_interval == 0
+                and step < cfg.densify_stop
+            ):
                 with torch.no_grad():
                     model.opacities.data.clamp_(max=math.log(0.01 / 0.99))
 
@@ -525,13 +726,19 @@ def train(cfg: TrainConfig) -> Path:
             named = step in cfg.save_steps or step == cfg.max_steps
             periodic = cfg.ckpt_every > 0 and step % cfg.ckpt_every == 0
             if named or periodic:
-                _save_cuda_ckpt(out, cfg, model, step, optimizers, named=named)
+                _save_cuda_ckpt(
+                    out, cfg, model, step, optimizers, named=named,
+                    strategy_state=strategy_state,
+                )
 
             if cfg.eval_every > 0 and step % cfg.eval_every == 0 and len(test_ds) > 0:
                 _eval_psnr(model, test_ds, device, cfg, active_sh)
     except KeyboardInterrupt:
         print("Interrupted - writing ckpt_latest.pt (use --resume)")
-        _save_cuda_ckpt(out, cfg, model, step, optimizers, named=False)
+        _save_cuda_ckpt(
+            out, cfg, model, step, optimizers, named=False,
+            strategy_state=strategy_state,
+        )
         raise SystemExit(130)
 
     meta = {
@@ -555,7 +762,10 @@ def _eval_psnr(model, test_ds, device, cfg: TrainConfig, active_sh: int) -> None
         viewmat = sample["viewmat"][None].to(device)
         h = int(sample["height"])
         w = int(sample["width"])
-        colors, alphas, _ = _rasterize(model, viewmat, K, w, h, active_sh, cfg.near, cfg.far)
+        colors, alphas, _ = _rasterize(
+            model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+            rasterize_mode="antialiased" if cfg.antialiased else "classic",
+        )
         bkgd = torch.zeros(1, 1, 1, 3, device=device)
         gt = image * alpha[..., None] + bkgd * (1.0 - alpha[..., None])
         pred = colors[..., :3] * alphas[..., None] + bkgd * (1.0 - alphas[..., None])
