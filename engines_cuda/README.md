@@ -202,10 +202,17 @@ Outputs:
 
 ## Mesh from trained means
 
+Default backend is **Open3D Poisson**. Optional **PyTorch3D** path voxelizes means and runs `cubify` (`--backend pytorch3d`; install `pytorch3d` separately).
+
 ```bash
 python export/mesh_from_ckpt.py \
   --ckpt "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/ckpt_30000.pt" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/mesh_from_splat.ply"
+
+python export/mesh_from_ckpt.py \
+  --ckpt "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/ckpt_30000.pt" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out/mesh_from_splat_p3d.ply" \
+  --backend pytorch3d --grid-size 128
 ```
 
 ## Training details

@@ -12,3 +12,5 @@ scipy
 tqdm
 open3d
 imageio
+# Mesh --backend pytorch3d (builds against the already-installed torch)
+pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git

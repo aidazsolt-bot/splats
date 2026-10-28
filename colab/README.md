@@ -6,10 +6,8 @@ Branch: **`feature/colab-train` only**.
 | Goal | Tool |
 |------|------|
 | Train photoreal splats | **gsplat** via `engines_cuda/run_train.py` |
-| Mesh from trained Gaussians | **`engines_cuda/export/mesh_from_ckpt.py`** (Open3D Poisson) |
+| Mesh from trained Gaussians | **`engines_cuda/export/mesh_from_ckpt.py`** (`--backend open3d` Poisson default, or `pytorch3d` cubify) |
 | Mesh without training | `engines/run_blackberry.py` |
-
-PyTorch3D is **not** used in this pipeline (optional third-party lib; ignore it).
 
 ## Quick start (Colab)
 
@@ -64,9 +62,17 @@ Notebook / note default `OUT`: `…/cuda_out_mcmc/`.
 ## Mesh after train
 
 ```bash
+# Default: Open3D Poisson
 python engines_cuda/export/mesh_from_ckpt.py \
   --ckpt "$OUT/ckpt_45000.pt" \
   --out "$OUT/mesh_from_splat.ply"
+
+# Optional: PyTorch3D voxel cubify (install pytorch3d first)
+pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+python engines_cuda/export/mesh_from_ckpt.py \
+  --ckpt "$OUT/ckpt_45000.pt" \
+  --out "$OUT/mesh_from_splat_p3d.ply" \
+  --backend pytorch3d --grid-size 128
 ```
 
 (Also in the notebook, section 6.)

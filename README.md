@@ -16,7 +16,7 @@ git checkout feature/colab-train && git pull
 |------|------|
 | [`engines_cuda/`](engines_cuda/) | Photoreal 3DGS train (PyTorch + **gsplat**, NVIDIA CUDA) |
 | [`colab/`](colab/) | Same trainer as a Colab notebook |
-| [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussians (Open3D Poisson) |
+| [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussians (Open3D Poisson or PyTorch3D cubify) |
 | [`engines/`](engines/) | CPU deterministic splat + mesh (no training) |
 
 Also in-tree (secondary): [`engines_cpu_train/`](engines_cpu_train/), [`engines_opencl/`](engines_opencl/), [`engines_povray/`](engines_povray/).
@@ -67,6 +67,7 @@ Mesh after train:
 python engines_cuda/export/mesh_from_ckpt.py \
   --ckpt cuda_out_mcmc/ckpt_45000.pt \
   --out cuda_out_mcmc/mesh_from_splat.ply
+# optional: --backend pytorch3d --grid-size 128
 ```
 
 ### CPU deterministic (no training)
