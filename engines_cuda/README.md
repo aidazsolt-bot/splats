@@ -5,16 +5,9 @@
 Learned Gaussian splats via gradient descent (same family as Postshot / Inria 3DGS),
 with **alpha-masked** photometric loss for cut-out macro subjects (Blackberry RGBA).
 
-Requires **NVIDIA CUDA**. Lab hosts without a GPU cannot run training locally.
-
-**No local NVIDIA?** Use Google Colab: [`../colab/README.md`](../colab/README.md) and
-[`../colab/blackberry_train_colab.ipynb`](../colab/blackberry_train_colab.ipynb)
-(same `engines_cuda` + gsplat stack on a cloud T4/L4/A100).
-
-PyTorch3D is unrelated to this trainer (optional mesh tools only).
+Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUDA box.
 
 ## Why this vs `engines/` (no-train)
-
 
 | | `engines/` | `engines_cuda/` |
 |--|--|--|
@@ -27,106 +20,95 @@ PyTorch3D is unrelated to this trainer (optional mesh tools only).
 On a GPU machine:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-pip install -r engines_cuda/requirements.txt
-# Linux lab
-python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" --max-steps 30000
-# Windows: --data X:\blackberry-splats\dataset
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r engines_cuda/requirements.txt
+python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
+# Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
-### Supported stack (pin this - do not mix)
+Match the Torch wheel CUDA tag (`cu121`, `cu124`, ...) to the driver/toolkit on that machine.
 
-| Piece | Use this |
-|-------|----------|
-| PyTorch wheel | **`cu121`** (e.g. `2.5.1+cu121` works; newer Torch is fine **only** if still `+cu121`) |
-| CUDA Toolkit (`nvcc`) | **12.1** (`...\CUDA\v12.1`) |
-| MSVC | VS **2022** Build Tools + workload **VCTools** (Desktop C++) |
-| gsplat extras | **`ninja`** on PATH; first import JIT-compiles CUDA kernels |
+### Windows: gsplat CUDA extension build
 
-PyPI "latest" Torch may be newer (e.g. **2.14.x**) - that does **not** mean you should jump to
-Toolkit 12.4 / `cu124`. Match **wheel tag ↔ Toolkit major.minor**. Newer NVIDIA **drivers**
-(e.g. UMD 13.x) are OK with Toolkit 12.1.
+Tested working setup (training ran to step 20000 with this toolchain):
+
+| Component | Version |
+|--|--|
+| OS | Windows 11 Home, build 26200 |
+| GPU | NVIDIA GeForce GTX 1650, 4 GB (compute capability 7.5) |
+| NVIDIA driver | 621.01 (supports CUDA up to 13.5) |
+| CUDA Toolkit (`nvcc`) | 12.1 (V12.1.66) |
+| Visual Studio Build Tools | 2022, 17.14 |
+| MSVC toolset / `cl.exe` | 14.44.35207 / 19.44.35229 (x64) |
+| Python | 3.12.9 (x64) |
+| PyTorch | 2.5.1+cu121 |
+| gsplat | 1.5.3 (CUDA extension JIT-compiled, ~5 min first run) |
+| Ninja | 1.13.2 |
+| NumPy / Pillow | 1.26.4 / 12.1.1 |
+
+MSVC 17.14 is newer than CUDA 12.1 officially supports; [win_build_env.py](win_build_env.py)
+adds `-allow-unsupported-compiler` and `_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH`
+to make this combination build.
+
+If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
+requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and
+Visual Studio 2022 Build Tools with **Desktop development with C++** (MSVC x64
+tools and Windows SDK). Run training from **Developer PowerShell for VS 2022**
+or an **x64 Native Tools Command Prompt for VS 2022**.
+
+For `RuntimeError: Ninja is required to load C++ extensions`, install Ninja
+using the same Python interpreter that runs training:
+
+```powershell
+python -m pip install ninja
+ninja --version
+nvcc --version
+cl
+python -c "import torch; print(torch.__version__, torch.version.cuda)"
+```
+
+`ninja`, `nvcc`, and `cl` must be available on `PATH` in that terminal. If
+`ninja` is not found after installation, add that Python installation's Scripts
+directory to `PATH` (for a user install, locate it with
+`python -m site --user-site` and replace the trailing `site-packages` with
+`Scripts`). Match the installed CUDA toolkit to `torch.version.cuda`.
+
+The initial `ImportError: cannot import name 'csrc' from 'gsplat'` triggers this
+build fallback; the final build error is the one to resolve. Merely importing
+gsplat does not verify that its CUDA extension can build or load.
 
 Confirm CUDA before a long run:
 
 ```bash
-python -c "import torch; assert torch.cuda.is_available(); print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"
-# gsplat must load the compiled extension:
-python -c "from gsplat.cuda._backend import _C; assert _C is not None"
+python -c "import torch; assert torch.cuda.is_available(); import gsplat; print(torch.cuda.get_device_name(0))"
 ```
-
-### Windows: CUDA Toolkit for gsplat (needed beyond the driver)
-
-`nvidia-smi` + `torch.cuda.is_available() == True` is **not** enough. gsplat builds/loads
-CUDA kernels and needs **`nvcc`** from the CUDA Toolkit. Symptom if missing:
-
-`gsplat: No CUDA toolkit found. gsplat will be disabled` then `AttributeError: 'NoneType'...CameraModelType`.
-
-For Torch **`cu121`**, install **CUDA Toolkit 12.1**. Prefer the **network installer** (~29 MB
-bootstrap; you choose components) over the local/exe_local package (~3 GB full download):
-
-[CUDA 12.1 network installer (Windows x86_64)](https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_network)
-
-In the installer, choose **Custom** (not Express):
-
-- Keep: **CUDA Development** (includes **nvcc**) and **CUDA Runtime**
-- **Deselect Display Driver** if `nvidia-smi` already works - the toolkit often offers an
-  older bundled driver; installing it can downgrade a newer Game Ready / Studio driver
-- Skip: Demo Suite, Documentation, Nsight extras you do not need, samples
-
-Notes from Windows installs (painful but real):
-
-- The UI **install path on D:** does **not** keep C: small. NVIDIA still parks a large
-  chunk on the system drive (Program Files, ProgramData, VS integration, redistributables).
-  Reports: **~5–6 GB free needed on C:** even when "installing to D:" - free that space
-  or the installer refuses / fails mid-way
-- Prefer the network installer + Custom so you can **deselect Display Driver** and demos;
-  the local ~3 GB package is worse, not better for disk
-- If C: cannot spare ~6 GB: skip local Toolkit and use **Google Colab**
-  ([`../colab/`](../colab/)) or another machine with room for `nvcc`
-
-After install, **new** PowerShell (`nvcc` must be on PATH - Toolkit often lands under
-`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1` even if you picked D:):
-
-```powershell
-$env:CUDA_HOME = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1"
-$env:Path = "$env:CUDA_HOME\bin;" + $env:Path
-nvcc --version
-
-# gsplat JIT-builds CUDA kernels - needs ninja + MSVC (VS Build Tools "Desktop C++")
-pip install ninja
-pip uninstall gsplat -y
-pip install gsplat --no-cache-dir
-
-# First import may compile for a few minutes
-python -c "from gsplat.cuda._backend import _C; print('gsplat CUDA ok', _C is not None)"
-
-python .\engines_cuda\run_train.py --resume `
-  --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
-```
-
-- `Ninja is required to load C++ extensions` -> `pip install ninja`, retry
-- `cl.exe` / MSVC missing -> install Build Tools (winget, elevated / UAC OK):
-
-```powershell
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-```
-
-  Then activate MSVC using [the Windows setup guide](../WINDOWS_CUDA_SETUP.md)
-  or open **Developer PowerShell for VS 2022** / **x64 Native Tools Command Prompt**.
-  An ordinary new PowerShell does not activate the compiler environment.
-  Set `CUDA_HOME`/`Path` as above and re-run the `from gsplat.cuda._backend import _C`
-  check (first compile can take minutes).
-
-`where.exe nvcc` empty while files exist under `...\CUDA\v12.1\bin` -> PATH/`CUDA_HOME` not set
-(Toolkit install succeeded; shell just cannot see `nvcc`).
-
-GTX 1650 (4 GB): start with `--data-factor 4` (or `8` on OOM).
 
 ## Train Blackberry
 
-Dataset layout (COLMAP text + `images/*.png` RGBA):
-Linux `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`, Windows `X:\blackberry-splats\dataset`.
+### Required dataset files
+
+`--data` must point to a COLMAP **text** export:
+
+| File | Required | Used for |
+|--|--|--|
+| `cameras.txt` | yes | intrinsics; `SIMPLE_PINHOLE`, `SIMPLE_RADIAL`, `PINHOLE`, `OPENCV` |
+| `images.txt` | yes | camera pose per image and image file name |
+| `points3D.txt` | yes | initial Gaussians (position + color); must not be empty |
+| `images/` | yes | the images named in `images.txt` |
+| `rigs.txt`, `frames.txt` | no | ignored |
+
+Notes:
+
+- Binary COLMAP files (`*.bin`) are not read; export them as text first.
+- RGBA images are recommended: the alpha channel is the subject mask for the
+  loss. RGB images work, but then every pixel counts as foreground.
+- Lens distortion parameters are read but not applied during rendering, so
+  undistorted images (`PINHOLE` cameras) give the best result.
+- Intrinsics are rescaled to the actual image resolution, so images may be
+  smaller than the resolution stored in `cameras.txt`.
+- Every 8th image (`--test-every`) is held out for evaluation.
+
+Example layout: `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`.
 
 ```bash
 python engines_cuda/run_train.py \
@@ -139,21 +121,78 @@ python engines_cuda/run_train.py \
 Smoke test on GPU:
 
 ```bash
-python engines_cuda/run_train.py --smoke --data-factor 4 \
-  --out "$HOME/tmp/gs_smoke"
+python run_train.py --smoke --data-factor 4 --out /tmp/gs_smoke
 ```
 
-Resume after interrupt (same flags + `--out`):
+Resume with the same settings and output directory:
 
-```bash
-python engines_cuda/run_train.py --resume \
-  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
-  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out" \
-  --data-factor 2 --max-steps 30000
+```powershell
+python engines_cuda/run_train.py --resume --data X:\blackberry-splats\dataset --out cuda_out --data-factor 4
 ```
 
-`ckpt_latest.pt` is written every `--ckpt-every` steps (default 500) and on Ctrl-C.
-`--resume` with no checkpoint: hint + fresh start. With checkpoint: settings must match `cfg.json`.
+### Image resolution and RAM cache
+
+- `--data-factor N` (default `1`): downscale training images by `N`. `1` trains
+  at the original resolution; `4` turns 2560x3840 into 640x960. Part of the
+  resume settings, so a resumed run must use the same value.
+- `--cache-images` (default off): decode and downscale all images once at
+  startup and keep them in RAM. Without it, each training step reads one image
+  from disk. Use it for slow (network) drives; at factor 1 it needs about
+  `width * height * 4` bytes per image (~37 MiB for 2560x3840).
+- `--cache-workers N` (default `8`): parallel loader threads for `--cache-images`.
+
+Both cache options can be changed between resumed runs.
+
+### Refinement strategies
+
+New runs use gsplat's `DefaultStrategy` unless `--strategy` is specified.
+Available strategies:
+
+- `--strategy default`: screen-space-gradient cloning/splitting, low-opacity and
+  oversized-splat pruning. Main options: `--refine-start` (500),
+  `--refine-stop` (15000), `--refine-every` (100), `--grow-grad2d` (0.0002),
+  `--grow-scale3d` (0.01), `--prune-scale3d` (0.1), `--prune-opa` (0.005),
+  `--reset-every` (3000), `--pause-refine-after-reset` (0), `--absgrad`, and
+  `--revised-opacity`. With `--absgrad`, the default `--grow-grad2d` threshold
+  is 0.0008 instead of 0.0002.
+- `--strategy mcmc`: gsplat's fixed-budget MCMC refinement; low-opacity splats
+  are relocated and new splats are added up to `--cap-max` (default 200000).
+  Other options include `--refine-stop` (25000), `--refine-every` (100),
+  `--prune-opa` (0.005), and `--noise-lr` (500000). The cap limits additions;
+  it does not reduce a checkpoint that already exceeds the cap.
+- `--strategy legacy`: retain the repository's original custom refinement
+  behavior.
+
+`--opacity-reg` defaults to 0.01 for MCMC and 0 otherwise; `--scale-reg`
+defaults to 0.01. `--antialiased` enables gsplat antialiased rasterization.
+`--no-densify` disables all strategy refinement (including MCMC relocation and
+noise). Strategy configuration and refinement state are checkpointed.
+
+Resuming a pre-strategy checkpoint with no `--strategy` flag automatically
+selects `legacy`. New checkpoints require the same strategy and its relevant
+parameters when resumed. Cache options may still be changed between runs.
+
+Example:
+
+```powershell
+python engines_cuda/run_train.py --data X:\blackberry-splats\dataset --out cuda_mcmc `
+  --data-factor 4 --strategy mcmc --cap-max 200000 --max-steps 45000
+```
+
+On the GTX 1650 with 4 GB VRAM, treat the MCMC cap as tunable: image resolution,
+view count and rendering workspace also affect memory use. If CUDA runs out of
+memory, stop and resume with the same output directory and a lower cap only if
+the current Gaussian count is already below it; otherwise start a new run.
+
+`--resume` starts a new run if no checkpoint exists. Otherwise it restores the
+Gaussians, optimizer state, and training step, rejecting incompatible settings.
+`ckpt_latest.pt` is saved every `--ckpt-every` steps (default 500), at numbered
+save steps, and on Ctrl-C.
+Checkpoint files are written to a temporary file in the same directory and then
+atomically replaced, preserving the previous checkpoint if writing fails.
+Replacement retries briefly on permission/sharing errors; if the file remains
+locked, saving fails explicitly. Close programs holding the checkpoint open,
+check folder permissions, then use `--resume` to restart from the last saved step.
 
 Outputs:
 
