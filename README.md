@@ -4,7 +4,7 @@ Macro Gaussian splat tooling for COLMAP + RGBA datasets (e.g. Blackberry).
 
 ## Branch
 
-**Only `feature/colab-train`.** Use it for local NVIDIA (GTX 1650 etc.) and for Google Colab.
+**Only `feature/colab-train`.** Local NVIDIA laptop and Google Colab use this same tree.
 
 ```bash
 git checkout feature/colab-train && git pull
@@ -14,21 +14,20 @@ git checkout feature/colab-train && git pull
 
 | Path | What |
 |------|------|
-| [`engines_cuda/`](engines_cuda/) | Photoreal 3DGS train (PyTorch + **gsplat**, needs NVIDIA CUDA) |
-| [`colab/`](colab/) | Same trainer in a Colab notebook |
-| [`engines/`](engines/) | CPU deterministic splat + **Open3D mesh** (no training) |
-| [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussian means (Open3D Poisson) |
-| [`engines_cpu_train/`](engines_cpu_train/) | Pure PyTorch train on CPU (very slow) |
-| [`engines_opencl/`](engines_opencl/) | OpenCL hybrid train (non-CUDA GPUs; backward mostly CPU) |
-| [`engines_povray/`](engines_povray/) | COLMAP + mesh -> POV-Ray scene |
+| [`engines_cuda/`](engines_cuda/) | Photoreal 3DGS train (PyTorch + **gsplat**, NVIDIA CUDA) |
+| [`colab/`](colab/) | Same trainer as a Colab notebook |
+| [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussians (Open3D Poisson) |
+| [`engines/`](engines/) | CPU deterministic splat + mesh (no training) |
 
-Windows CUDA (Toolkit 12.1 / MSVC / ninja): [`WINDOWS_CUDA_SETUP.md`](WINDOWS_CUDA_SETUP.md), [`engines_cuda/README.md`](engines_cuda/README.md).  
-Colab details: [`colab/README.md`](colab/README.md).
+Also in-tree (secondary): [`engines_cpu_train/`](engines_cpu_train/), [`engines_opencl/`](engines_opencl/), [`engines_povray/`](engines_povray/).
+
+Windows CUDA setup: [`WINDOWS_CUDA_SETUP.md`](WINDOWS_CUDA_SETUP.md) · [`engines_cuda/README.md`](engines_cuda/README.md)  
+Colab: [`colab/README.md`](colab/README.md)
 
 ## Dataset
 
 ```text
-cameras.txt  images.txt  points3D.txt  images/*.png   # RGBA recommended
+cameras.txt  images.txt  points3D.txt  images/*.png
 ```
 
 | Host | `--data` |
@@ -41,9 +40,8 @@ cameras.txt  images.txt  points3D.txt  images/*.png   # RGBA recommended
 
 ### Google Colab
 
-1. Open [`colab/blackberry_train_colab.ipynb`](colab/blackberry_train_colab.ipynb) → Runtime **GPU**.
-2. Mount Drive, run smoke, then MCMC full train.
-3. Checkpoints under `MyDrive/blackberry-splats/cuda_out_mcmc/` (`RESUME = True` after disconnect).
+Open [`colab/blackberry_train_colab.ipynb`](colab/blackberry_train_colab.ipynb) → Runtime **GPU** → mount Drive → smoke → MCMC train.  
+`OUT`: `MyDrive/blackberry-splats/cuda_out_mcmc/` · after disconnect: `RESUME = True`.
 
 ### CUDA train (local laptop / lab)
 
@@ -59,15 +57,9 @@ python .\engines_cuda\run_train.py --resume `
   --out cuda_out_mcmc `
   --strategy mcmc --cap-max 200000 `
   --max-steps 45000 --data-factor 1 --antialiased
-
-# Linux
-python engines_cuda/run_train.py \
-  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
-  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/cuda_out_mcmc" \
-  --strategy mcmc --cap-max 200000 --max-steps 45000 --data-factor 1 --antialiased
 ```
 
-GTX 1650 (4 GB): OOM → `--data-factor 2` and/or lower `--cap-max`. Optional: `--cache-images`, `--smoke`.
+GTX 1650 (4 GB): OOM → `--data-factor 2` and/or lower `--cap-max`.
 
 Mesh after train:
 
@@ -84,32 +76,4 @@ pip install -r engines/requirements.txt
 python engines/run_blackberry.py \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_out"
-```
-
-### CPU quality train (no CUDA, slow)
-
-```bash
-pip install -r engines_cpu_train/requirements.txt
-python engines_cpu_train/run_train.py --hires --resume \
-  --data X:\blackberry-splats\dataset \
-  --out X:\blackberry-splats\engines_cpu_train_out
-```
-
-### OpenCL hybrid
-
-```bash
-pip install -r engines_opencl/requirements.txt
-python engines_opencl/list_devices.py
-python engines_opencl/run_train.py --prefer nvidia --resume \
-  --data X:\blackberry-splats\dataset --out opencl_out --data-factor 4 --steps 5000
-```
-
-### POV-Ray
-
-```bash
-python engines_povray/colmap_to_pov.py \
-  --data X:\blackberry-splats\dataset \
-  --out povray_out \
-  --mesh engines_out/mesh.ply
-python engines_povray/render_views.py --scene-dir povray_out --indices 0
 ```
