@@ -16,10 +16,14 @@ from pathlib import Path
 
 _DROP_CFLAGS = {"-Wno-attributes"}
 # MSVC STL >= 17.10 refuses CUDA < 12.4 (STL1002); nvcc < 12.4 refuses MSVC >= 17.10.
-_COMPAT_CFLAGS = ["/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"]
+_COMPAT_CFLAGS = [
+    "/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
+    "/Zc:preprocessor",
+]
 _COMPAT_CUDA_CFLAGS = [
     "-allow-unsupported-compiler",
     "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
+    "-Xcompiler=/Zc:preprocessor",
 ]
 
 
