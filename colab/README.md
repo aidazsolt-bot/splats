@@ -3,8 +3,8 @@
 Colab runtimes usually have an **NVIDIA GPU + CUDA**. That matches `engines_cuda`
 (gsplat + PyTorch), not the CPU/OpenCL paths.
 
-Use branch **`feature/colab-train`** (includes MCMC / antialiased / resume from the
-CUDA train line).
+**Branch:** only **`feature/colab-train`** (MCMC / antialiased / resume). Same tree for
+local NVIDIA laptop training via `engines_cuda` — Colab is optional cloud GPU.
 
 ## PyTorch3D?
 
