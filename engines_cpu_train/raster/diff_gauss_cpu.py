@@ -185,78 +185,99 @@ def _accumulate_batched(
     width: int,
     height: int,
     batch_size: int,
+    clip: Optional[Tuple[int, int, int, int]] = None,
 ) -> None:
-    """Vectorized stencil scatter: many Gaussians per index_add."""
+    """Vectorized stencil scatter: many Gaussians per index_add.
+
+    Gaussians are grouped by identical integer radius so the stencil does not
+    depend on unrelated batch mates (avoids fringe pixel drift).
+
+    If clip=(x0,y0,x1,y1) is set, only pixels inside that half-open rect are
+    written. Multi-tile ownership is then safe: each pixel has one owner tile.
+    """
     device, dtype = m2.device, m2.dtype
     n = m2.shape[0]
-    W, H = width, height
-    for start in range(0, n, batch_size):
-        sl = slice(start, min(start + batch_size, n))
-        cx = m2[sl, 0]
-        cy = m2[sl, 1]
-        r = rad[sl]
-        r_max = int(r.detach().max().item()) if r.numel() else 0
-        if r_max < 1:
+    if n == 0:
+        return
+    W = width
+    if clip is None:
+        cx0, cy0, cx1, cy1 = 0, 0, width, height
+    else:
+        cx0, cy0, cx1, cy1 = clip
+        if cx0 >= cx1 or cy0 >= cy1:
+            return
+
+    r_i = rad.detach().ceil().clamp(min=0).long()
+    # Process one integer-radius bucket at a time (deterministic stencil).
+    for R in torch.unique(r_i).tolist():
+        R = int(R)
+        if R < 1:
             continue
-        offs = torch.arange(-r_max, r_max + 1, device=device)
+        sel = (r_i == R).nonzero(as_tuple=False).squeeze(-1)
+        offs = torch.arange(-R, R + 1, device=device)
         oy, ox = torch.meshgrid(offs, offs, indexing="ij")
         ox = ox.reshape(-1)
         oy = oy.reshape(-1)
-        # Integer pixel grid anchored at floor(center)
-        base_x = torch.floor(cx.detach()).long()
-        base_y = torch.floor(cy.detach()).long()
-        pix_x = base_x[:, None] + ox[None, :]
-        pix_y = base_y[:, None] + oy[None, :]
-        dx = pix_x.to(dtype) - cx[:, None]
-        dy = pix_y.to(dtype) - cy[:, None]
-        r_lim = r[:, None] + 0.5
-        inside = (
-            (pix_x >= 0)
-            & (pix_x < W)
-            & (pix_y >= 0)
-            & (pix_y < H)
-            & (dx * dx + dy * dy <= r_lim * r_lim)
-            & (r[:, None] >= 1)
-        )
-        if not bool(inside.any()):
-            continue
-        power = -0.5 * (
-            inv00[sl, None] * dx * dx
-            + 2.0 * inv01[sl, None] * dx * dy
-            + inv11[sl, None] * dy * dy
-        )
-        alpha = (
-            opac[sl, None]
-            * torch.exp(power.clamp(min=-40.0))
-            * depth_w[sl, None]
-        ).clamp(max=0.99)
-        alpha = torch.where(inside, alpha, alpha.new_zeros(()))
-        flat = (pix_y * W + pix_x).reshape(-1)
-        w = alpha.reshape(-1)
-        # Drop empty slots (outside) to keep index_add smaller
-        mask = inside.reshape(-1)
-        if not bool(mask.any()):
-            continue
-        flat_m = flat[mask]
-        w_m = w[mask]
-        # rgbs: (b,3) -> (b,K,3) -> masked
-        b = cx.shape[0]
         k = ox.numel()
-        rgb_exp = rgbs[sl].unsqueeze(1).expand(b, k, 3).reshape(-1, 3)[mask]
-        acc_a.index_add_(0, flat_m, w_m)
-        acc_rgb.index_add_(0, flat_m, w_m.unsqueeze(-1) * rgb_exp)
+        for start in range(0, sel.numel(), batch_size):
+            g = sel[start : start + batch_size]
+            cx = m2[g, 0]
+            cy = m2[g, 1]
+            r = rad[g]
+            base_x = torch.floor(cx.detach()).long()
+            base_y = torch.floor(cy.detach()).long()
+            pix_x = base_x[:, None] + ox[None, :]
+            pix_y = base_y[:, None] + oy[None, :]
+            dx = pix_x.to(dtype) - cx[:, None]
+            dy = pix_y.to(dtype) - cy[:, None]
+            r_lim = r[:, None] + 0.5
+            inside = (
+                (pix_x >= cx0)
+                & (pix_x < cx1)
+                & (pix_y >= cy0)
+                & (pix_y < cy1)
+                & (dx * dx + dy * dy <= r_lim * r_lim)
+            )
+            if not bool(inside.any()):
+                continue
+            power = -0.5 * (
+                inv00[g, None] * dx * dx
+                + 2.0 * inv01[g, None] * dx * dy
+                + inv11[g, None] * dy * dy
+            )
+            alpha = (
+                opac[g, None]
+                * torch.exp(power.clamp(min=-40.0))
+                * depth_w[g, None]
+            ).clamp(max=0.99)
+            alpha = torch.where(inside, alpha, alpha.new_zeros(()))
+            flat = (pix_y * W + pix_x).reshape(-1)
+            mask = inside.reshape(-1)
+            if not bool(mask.any()):
+                continue
+            flat_m = flat[mask]
+            w_m = alpha.reshape(-1)[mask]
+            b = g.numel()
+            rgb_exp = rgbs[g].unsqueeze(1).expand(b, k, 3).reshape(-1, 3)[mask]
+            acc_a.index_add_(0, flat_m, w_m)
+            acc_rgb.index_add_(0, flat_m, w_m.unsqueeze(-1) * rgb_exp)
 
 
-def _tile_ranges(
+def _tile_jobs(
     m2: torch.Tensor,
     rad: torch.Tensor,
     width: int,
     height: int,
     tile: int,
-) -> list[torch.Tensor]:
-    """Gaussian indices overlapping each image tile (for cache-friendly order)."""
+) -> list[Tuple[torch.Tensor, Tuple[int, int, int, int]]]:
+    """(gaussian_indices, clip_rect) per non-empty image tile.
+
+    A Gaussian may appear in several jobs; clipping to the tile rect prevents
+    double-counting pixels.
+    """
+    all_idx = torch.arange(m2.shape[0], device=m2.device, dtype=torch.long)
     if tile <= 0 or m2.numel() == 0:
-        return [torch.arange(m2.shape[0], device=m2.device, dtype=torch.long)]
+        return [(all_idx, (0, 0, width, height))]
     n_tx = (width + tile - 1) // tile
     n_ty = (height + tile - 1) // tile
     cx = m2[:, 0].detach()
@@ -274,11 +295,23 @@ def _tile_ranges(
         for ty in range(ty0, ty1 + 1):
             for tx in range(tx0, tx1 + 1):
                 buckets[ty * n_tx + tx].append(i)
-    out: list[torch.Tensor] = []
-    for b in buckets:
-        if b:
-            out.append(torch.tensor(b, device=m2.device, dtype=torch.long))
-    return out if out else [torch.arange(m2.shape[0], device=m2.device, dtype=torch.long)]
+    out: list[Tuple[torch.Tensor, Tuple[int, int, int, int]]] = []
+    for ty in range(n_ty):
+        for tx in range(n_tx):
+            b = buckets[ty * n_tx + tx]
+            if not b:
+                continue
+            x0 = tx * tile
+            y0 = ty * tile
+            x1 = min(width, x0 + tile)
+            y1 = min(height, y0 + tile)
+            out.append(
+                (
+                    torch.tensor(b, device=m2.device, dtype=torch.long),
+                    (x0, y0, x1, y1),
+                )
+            )
+    return out if out else [(all_idx, (0, 0, width, height))]
 
 
 def rasterize_gaussians_cpu(
@@ -298,15 +331,18 @@ def rasterize_gaussians_cpu(
     max_radius: int = 30,
     depth_gamma: float = 4.0,
     batch_size: int = 64,
-    tile_size: int = 0,
+    tile_size: int = 64,
     method: str = "batched",
     num_threads: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return rgb (H,W,3), alpha (H,W). Depth-weighted soft composite (differentiable).
 
     method:
-      batched - stencil batches (default, fast); tile_size>0 groups by image tiles
+      batched - stencil batches + image tiles with per-tile pixel clip (default)
       loop    - legacy per-Gaussian Python loop
+
+    tile_size>0 is correct: Gaussians may overlap several tiles, but each pixel
+    is written only by the tile that owns it (clip rect).
     """
     if num_threads is None:
         num_threads = max(1, min(32, os.cpu_count() or 4))
@@ -358,8 +394,7 @@ def rasterize_gaussians_cpu(
                 width, height,
             )
         else:
-            groups = _tile_ranges(m2, rad, width, height, tile_size)
-            for gidx in groups:
+            for gidx, clip in _tile_jobs(m2, rad, width, height, tile_size):
                 _accumulate_batched(
                     acc_rgb,
                     acc_a,
@@ -374,6 +409,7 @@ def rasterize_gaussians_cpu(
                     width,
                     height,
                     batch_size=batch_size,
+                    clip=clip,
                 )
 
         denom = acc_a.clamp_min(1e-6).unsqueeze(-1)

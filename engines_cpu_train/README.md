@@ -11,8 +11,8 @@ recipe (`engines_cuda` with `--data-factor 2` and 30k steps) by:
 - no VRAM cap forcing aggressive downscale
 
 Wall-clock is still slower than CUDA, but the CPU rasterizer uses **batched
-stencil scatter** (optional image tiles) instead of a Python loop over every
-Gaussian. Benchmark:
+stencil scatter** plus **image tiles with per-tile pixel clip** (so overlapping
+Gaussians are not double-counted). Benchmark:
 
 ```bash
 python engines_cpu_train/bench_raster_cpu.py --n 4000 --w 160 --h 240

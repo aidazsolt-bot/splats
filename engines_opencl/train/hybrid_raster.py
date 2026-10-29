@@ -184,7 +184,7 @@ def rasterize_hybrid(
     max_gaussians: int = 25000,
     max_radius: int = 28,
     batch_size: int = 64,
-    tile_size: int = 0,
+    tile_size: int = 64,
     method: str = "batched",
     num_threads: int | None = None,
 ):

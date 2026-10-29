@@ -36,12 +36,16 @@ python engines_opencl/run_train.py --prefer nvidia \
 `--data` Windows: `X:\blackberry-splats\dataset` · Linux: `/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset`
 
 Checkpoints: `ckpt_latest.pt` every `--ckpt-every` steps (default 50), also on Ctrl-C.
+Each checkpoint also refreshes `splat_latest.ply`; numbered `splat_XXXXX.ply` every
+`--ply-every` steps (default 100; 0 = final only). Export is ~0.5s / ~10MB at 38k
+Gaussians - fine every few minutes; many numbered files mainly cost disk.
 `--resume` continues if a checkpoint exists; otherwise prints a hint and starts fresh.
 If a checkpoint exists, settings must match `cfg.json` in `--out`.
 
 Training uses the **CPU differentiable** rasterizer (needed for autograd). The
-CPU path defaults to **batched stencil** scatter (`--cpu-method batched`); use
-`--cpu-method loop` only for debug. Tune `--cpu-batch-size` / `--cpu-threads`.
+CPU path defaults to **batched stencil** + **64px tiles** with clip-to-tile
+(`--cpu-method batched`); use `--cpu-method loop` only for debug. Tune
+`--cpu-batch-size` / `--cpu-tile-size` / `--cpu-threads`.
 
 OpenCL device selection matters for ICD probing / preview. If Intel UHD appears
 despite index 1, use `--prefer nvidia` (binds the NVIDIA platform explicitly).

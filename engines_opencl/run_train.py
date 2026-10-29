@@ -124,6 +124,15 @@ def main() -> None:
         help="Write ckpt_latest.pt every N steps (0=end / interrupt only)",
     )
     ap.add_argument(
+        "--ply-every",
+        type=int,
+        default=100,
+        help=(
+            "Write numbered splat_XXXXX.ply every N steps (0=final only). "
+            "Also refreshes splat_latest.ply on each checkpoint."
+        ),
+    )
+    ap.add_argument(
         "--cpu-batch-size",
         type=int,
         default=64,
@@ -132,8 +141,8 @@ def main() -> None:
     ap.add_argument(
         "--cpu-tile-size",
         type=int,
-        default=0,
-        help="CPU raster: image tile size for grouping (0=disabled)",
+        default=64,
+        help="CPU raster: image tile size; pixels clipped per tile (0=one full-frame pass)",
     )
     ap.add_argument(
         "--cpu-method",
@@ -324,7 +333,29 @@ def main() -> None:
                         scene_scale=scene_scale,
                     ),
                 )
+                # Cheap viewer snapshot (~0.5s / ~10MB at 38k); overwrite in place.
+                export_gsplat_ply(
+                    out / "splat_latest.ply",
+                    means,
+                    scales,
+                    F.normalize(quats, dim=-1),
+                    opac,
+                    dc,
+                    rest,
+                )
                 print(f"  checkpoint step={step}")
+                if args.ply_every > 0 and step % args.ply_every == 0:
+                    ply_n = out / f"splat_{step:05d}.ply"
+                    export_gsplat_ply(
+                        ply_n,
+                        means,
+                        scales,
+                        F.normalize(quats, dim=-1),
+                        opac,
+                        dc,
+                        rest,
+                    )
+                    print(f"  saved {ply_n.name}")
     except KeyboardInterrupt:
         print("Interrupted - writing ckpt_latest.pt (use --resume)")
         save_checkpoint(
@@ -346,6 +377,15 @@ def main() -> None:
 
     ply = out / "splat_opencl.ply"
     export_gsplat_ply(ply, means, scales, F.normalize(quats, dim=-1), opac, dc, rest)
+    export_gsplat_ply(
+        out / "splat_latest.ply",
+        means,
+        scales,
+        F.normalize(quats, dim=-1),
+        opac,
+        dc,
+        rest,
+    )
     save_checkpoint(
         out,
         _pack(
