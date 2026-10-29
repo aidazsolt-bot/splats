@@ -49,8 +49,11 @@ visible failure instead of falling back to another CUDA version.
 
 - **2a fails:** the problem occurs before gsplat (environment/driver/PyTorch).
 - **2b fails:** retain the final compiler error. This phase builds on the CPU;
-  verbose Ninja output plus `/usr/bin/time -v` show elapsed time and peak host
-  RAM. A cache hit on rerun is not a cold-build measurement.
+  verbose Ninja output plus Python's standard-library `time`/`resource`
+  reporting show elapsed time, Python peak RSS and the largest reaped child
+  peak RSS, even on normal build exceptions. These are not combined
+  process-tree memory measurements; no external `time` executable is needed.
+  A cache hit on rerun is not a cold-build measurement.
 - **2c fails:** the extension built, but its tiny forward/backward GPU test
   failed.
 - **2c passes, training fails:** investigate the dataset, training settings and
