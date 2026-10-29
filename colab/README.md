@@ -19,8 +19,9 @@ Branch: **`feature/colab-train` only**.
 
 ## Pinned local-stack comparison
 
-The notebook reproduces the currently installed local software versions, not
-the older working CUDA 12.1 / gsplat 1.5.3 combination:
+The notebook uses the local CUDA 13.4 / PyTorch 2.15 comparison stack, not
+the older working CUDA 12.1 / gsplat 1.5.3 combination. It pins the
+CUDA 13 host/device `isfinite` fix from upstream [gsplat PR #1055](https://github.com/nerfstudio-project/gsplat/pull/1055):
 
 | Component | Notebook pin |
 |-----------|--------------|
@@ -28,7 +29,7 @@ the older working CUDA 12.1 / gsplat 1.5.3 combination:
 | PyTorch | `2.15.0+cu134` from the official `cu134` index |
 | CUDA compiler (`nvcc`) | `13.4.92` |
 | NVIDIA toolkit Python package set | `cuda-toolkit[nvcc,cudart,cccl]==13.4.3` |
-| gsplat | `1.6.0`, source commit `2a29ad06ba008bb34c9b942e82c2d46d39a194f4` |
+| gsplat | `1.6.0`, source commit `8c33ba2aa4b1283376b679af397ee373d1f4c80` |
 | Ninja | `1.13.2` |
 | Parallel compiler jobs | `MAX_JOBS=10` |
 
