@@ -11,8 +11,10 @@ The separate GPU forward/backward check passed. The dataset smoke run then
 **completed all 500 steps**, reporting 496.0 seconds at the final step and
 successfully exporting a PLY plus checkpoint. A user-provided screenshot shows
 the result displayed in RenderAssimp Desktop (Vulkan).
-Full training, refinement, and MCMC were not yet verified at the time of this
-report.
+A subsequent 30,000-step run with antialiasing reached step 960, including
+successful duplication, splitting, pruning, and continued training after those
+refinement events. Full-run completion, higher-order SH, resume, and MCMC remain
+unverified.
 
 ## Environment
 
@@ -184,12 +186,60 @@ soft with visible stray splats after this short run. It is a visual sanity
 check, not evidence of final reconstruction quality, color-space accuracy,
 or numerical equivalence between viewers.
 
+### Full-training progress: antialiasing and refinement
+
+A later user-provided log records the start of the full schedule using the
+same environment and restricted extension cache:
+
+```text
+engines_cuda/run_train.py \
+  --data /content/drive/MyDrive/blackberry-splats/dataset \
+  --out /content/drive/MyDrive/blackberry-splats/cuda_out_stable \
+  --strategy default --max-steps 30000 --data-factor 2 --antialiased
+```
+
+The extension was reused (`ninja: no work to do.`). The run again used 81
+training and 12 test views, with the image cache off. A checkpoint was saved
+at step 500 as `ckpt_latest.pt`.
+
+| Refinement step | Duplicated | Split | Pruned | Gaussian count after pruning |
+|-----------------|------------|-------|--------|------------------------------|
+| 600 | 3,214 | 217 | 3 | 41,716 |
+| 700 | 5,843 | 196 | 11 | 47,744 |
+| 800 | 6,048 | 189 | 22 | 53,959 |
+| 900 | 6,509 | 189 | 28 | 60,629 |
+
+These are the strategy's logged operation counts; the split column counts
+source Gaussians selected for splitting, not the number of resulting children.
+The run started with 38,288 Gaussians and continued after each refinement
+event without a reported error or NaN.
+
+Latest supplied line:
+
+```text
+step=960/30000 loss=0.0757 l1=0.0533 ssim=0.1369 alpha=0.0378 n=60629 sh=0 (1014.2s)
+```
+
+This is **960/30,000 steps**, with 1014.2 seconds (16 min 54.2 s) of logged
+elapsed time, approximately 0.95 steps/s so far. The initial loss was 0.2378;
+sampled-view variation still prevents treating first/latest losses as a
+controlled quality comparison. Throughput includes per-step image loading
+and refinement and is not a GPU-only benchmark or a reliable full-run ETA.
+
+This extends execution evidence to the antialiased training path and the
+default strategy's duplication, splitting, and pruning, including subsequent
+optimization steps. It does not establish antialiasing quality or equivalence
+to an unrestricted build. The supplied log ends at step 960, still at SH
+degree 0: full-run completion, higher-order SH, final export, checkpoint resume,
+and MCMC remain unverified.
+
 ## What remains available, and what is restricted
 
 - Ordinary RGB 3DGS, SH colors, alpha, and backward remain available.
 - Adam, relocation/MCMC, and loss modules were not disabled.
-- Standard strategy refinement and antialiasing were not disabled by these
-  flags, but had not been individually validated by the reported GPU check.
+- Standard strategy refinement and antialiased training executed successfully
+  through step 960 in the later run described above; full-schedule completion
+  and numerical equivalence to an unrestricted build remain unverified.
 - 2DGS, 3DGUT, and non-RGB channel specializations are intentionally unavailable.
 - RGB means three channels, not a linear-light or gamma setting. No color
   space conversion was introduced.
