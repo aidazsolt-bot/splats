@@ -12,7 +12,7 @@ Branch: **`feature/colab-train` only**.
 ## Quick start (Colab)
 
 1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) (GitHub → Open in Colab).
-2. Start a fresh **GPU** runtime with Python 3.12; prefer T4 for the local comparison.
+2. Start a fresh **GPU** runtime; prefer T4 for the local comparison.
 3. Run sections 1-2c: install, verify versions/basic CUDA, build gsplat, test forward/backward.
 4. Only after these pass: mount Drive, smoke, then full training.
 5. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
@@ -24,7 +24,7 @@ the older working CUDA 12.1 / gsplat 1.5.3 combination:
 
 | Component | Notebook pin |
 |-----------|--------------|
-| Python | 3.12 required; exact patch version printed (local: 3.12.9) |
+| Python | `3.12.9`, downloaded separately with uv |
 | PyTorch | `2.15.0+cu134` from the official `cu134` index |
 | CUDA compiler (`nvcc`) | `13.4.92` |
 | NVIDIA toolkit Python package set | `cuda-toolkit[nvcc,cudart,cccl]==13.4.3` |
@@ -34,7 +34,9 @@ the older working CUDA 12.1 / gsplat 1.5.3 combination:
 
 These settings are at the top of the notebook. Installation and training use
 an isolated environment at `/content/splats-cu134-env`; the notebook kernel's
-preinstalled PyTorch is not used. Requirements are constrained so they cannot
+preinstalled Python/PyTorch are not used for training. A bootstrap uv
+installation at `/content/splats-bootstrap` downloads Python 3.12.9 without
+replacing or restricting the notebook kernel's Python version. Requirements are constrained so they cannot
 silently replace the selected PyTorch/Ninja versions. The actual gsplat source
 commit and `nvcc` version are checked before compiling.
 
@@ -54,8 +56,8 @@ visible failure instead of falling back to another CUDA version.
 - **2c passes, training fails:** investigate the dataset, training settings and
   memory use separately.
 
-Colab uses **Linux/GCC**, not Windows/MSVC, and its driver, Python patch
-version and host RAM can differ. A T4 shares compute capability 7.5 with the
+Colab uses **Linux/GCC**, not Windows/MSVC, and its driver and host RAM
+can differ. A T4 shares compute capability 7.5 with the
 local GTX 1650, but has more VRAM. Success on Colab helps isolate a
 Windows/toolchain issue; it does not establish that the local hardware is
 defective or provide an identical hardware benchmark.
