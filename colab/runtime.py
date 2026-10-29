@@ -71,6 +71,9 @@ def build_environment(cuda: Path) -> dict[str, str]:
         PATH=os.pathsep.join((str(VENV / "bin"), str(cuda / "bin"), env.get("PATH", ""))),
         LD_LIBRARY_PATH=os.pathsep.join((str(cuda / "lib"), env.get("LD_LIBRARY_PATH", ""))),
         BUILD_NO_CUDA="1",
+        BUILD_2DGS="0",
+        BUILD_3DGUT="0",
+        NUM_CHANNELS="3",
         MAX_JOBS=str(MAX_JOBS),
         VERBOSE="1",
         PYTHONUNBUFFERED="1",
@@ -148,7 +151,7 @@ print(json.dumps({
             raise RuntimeError(f"Expected {name}={value}, got {actual[name]}. Rerun section 2.")
     env["TORCH_CUDA_ARCH_LIST"] = actual["arch"]
     env["TORCH_EXTENSIONS_DIR"] = str(
-        ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-sm{actual['arch'].replace('.', '')}"
+        ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-rgb3dgs-sm{actual['arch'].replace('.', '')}"
     )
     print(
         f"Python {actual['python']} | torch {actual['torch']} | nvcc {NVCC_VERSION} | "

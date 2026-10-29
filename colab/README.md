@@ -49,6 +49,14 @@ The unmerged gsplat PR is installed from its author's `kyo-zzz/gsplat` fork
 at the full 40-character commit above. Compiler packages are pinned separately
 so installing nvcc 13.4.92 does not override PyTorch's CUDA runtime requirements.
 
+The build is restricted to this notebook's RGB 3DGS training path:
+`BUILD_2DGS=0`, `BUILD_3DGUT=0`, and `NUM_CHANNELS=3`. This skips unused
+2DGS/3DGUT kernels and non-RGB channel specializations; it does not change
+compiler optimization settings. Adam, relocation (including MCMC), and loss
+modules remain enabled. Other render modes requiring non-RGB channels are
+not supported by this build. Its separate `rgb3dgs` cache does not overwrite
+or reuse the previous full-build cache.
+
 Every diagnostic and training cell imports its dependencies and reloads the
 runtime helper independently. The helper validates the interpreter/packages and
 restores `CUDA_HOME`, library paths, target architecture, extension cache and
