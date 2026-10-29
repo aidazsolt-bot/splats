@@ -39,9 +39,12 @@ Checkpoints: `ckpt_latest.pt` every `--ckpt-every` steps (default 50), also on C
 `--resume` continues if a checkpoint exists; otherwise prints a hint and starts fresh.
 If a checkpoint exists, settings must match `cfg.json` in `--out`.
 
-Training uses the **CPU differentiable** rasterizer (needed for autograd). OpenCL device
-selection matters for ICD probing / preview. If Intel UHD appears despite index 1,
-pull this fix and use `--prefer nvidia` (binds the NVIDIA platform explicitly).
+Training uses the **CPU differentiable** rasterizer (needed for autograd). The
+CPU path defaults to **batched stencil** scatter (`--cpu-method batched`); use
+`--cpu-method loop` only for debug. Tune `--cpu-batch-size` / `--cpu-threads`.
+
+OpenCL device selection matters for ICD probing / preview. If Intel UHD appears
+despite index 1, use `--prefer nvidia` (binds the NVIDIA platform explicitly).
 
 **NVIDIA driver too old for PyTorch CUDA:** update the driver, or keep using this
 OpenCL/CPU path (no CUDA required for training here).

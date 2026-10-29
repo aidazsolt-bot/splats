@@ -10,8 +10,16 @@ recipe (`engines_cuda` with `--data-factor 2` and 30k steps) by:
 - more total optimization steps (~30k across stages, denser late stage)
 - no VRAM cap forcing aggressive downscale
 
-Wall-clock is much slower than CUDA; quality comes from the **training recipe**,
-not from CPU silicon being "better" than a GPU.
+Wall-clock is still slower than CUDA, but the CPU rasterizer uses **batched
+stencil scatter** (optional image tiles) instead of a Python loop over every
+Gaussian. Benchmark:
+
+```bash
+python engines_cpu_train/bench_raster_cpu.py --n 4000 --w 160 --h 240
+```
+
+OpenCL/CPU train flags: `--cpu-method batched|loop`, `--cpu-batch-size`,
+`--cpu-threads`, `--cpu-tile-size`.
 
 ## Usage
 

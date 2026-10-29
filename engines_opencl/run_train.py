@@ -123,6 +123,30 @@ def main() -> None:
         default=50,
         help="Write ckpt_latest.pt every N steps (0=end / interrupt only)",
     )
+    ap.add_argument(
+        "--cpu-batch-size",
+        type=int,
+        default=64,
+        help="CPU raster: Gaussians per stencil batch (batched method)",
+    )
+    ap.add_argument(
+        "--cpu-tile-size",
+        type=int,
+        default=0,
+        help="CPU raster: image tile size for grouping (0=disabled)",
+    )
+    ap.add_argument(
+        "--cpu-method",
+        choices=("batched", "loop"),
+        default="batched",
+        help="CPU raster backend (batched=fast stencil, loop=legacy)",
+    )
+    ap.add_argument(
+        "--cpu-threads",
+        type=int,
+        default=0,
+        help="torch.set_num_threads for CPU raster (0=auto)",
+    )
     args = ap.parse_args()
 
     losses = _losses_from_cpu()
@@ -145,7 +169,12 @@ def main() -> None:
         "cpu_fallback": bool(args.cpu_fallback),
         "smoke": bool(args.smoke),
         "device_index": args.device_index,
+        "cpu_batch_size": int(args.cpu_batch_size),
+        "cpu_tile_size": int(args.cpu_tile_size),
+        "cpu_method": str(args.cpu_method),
+        "cpu_threads": int(args.cpu_threads),
     }
+    cpu_threads = None if args.cpu_threads <= 0 else int(args.cpu_threads)
 
     cl = None
     prefer = args.prefer.strip() or None
@@ -250,11 +279,19 @@ def main() -> None:
                     cl_rasterizer=cl,
                     max_gaussians=max_draw,
                     max_radius=24,
+                    batch_size=args.cpu_batch_size,
+                    tile_size=args.cpu_tile_size,
+                    method=args.cpu_method,
+                    num_threads=cpu_threads,
                 )
             else:
                 rgb, alph = _cpu_raster().rasterize_gaussians_cpu(
                     means, scales, quats, opac, dc, rest, viewmat, K, w, h,
                     sh_degree=min(2, step // 500), max_gaussians=max_draw, max_radius=24,
+                    batch_size=args.cpu_batch_size,
+                    tile_size=args.cpu_tile_size,
+                    method=args.cpu_method,
+                    num_threads=cpu_threads,
                 )
 
             bkgd = torch.rand(1, 1, 3)
