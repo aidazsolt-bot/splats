@@ -331,18 +331,18 @@ def rasterize_gaussians_cpu(
     max_radius: int = 30,
     depth_gamma: float = 4.0,
     batch_size: int = 64,
-    tile_size: int = 64,
+    tile_size: int = 0,
     method: str = "batched",
     num_threads: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return rgb (H,W,3), alpha (H,W). Depth-weighted soft composite (differentiable).
 
     method:
-      batched - stencil batches + image tiles with per-tile pixel clip (default)
+      batched - stencil batches (default); optional image tiles via tile_size>0
       loop    - legacy per-Gaussian Python loop
 
-    tile_size>0 is correct: Gaussians may overlap several tiles, but each pixel
-    is written only by the tile that owns it (clip rect).
+    tile_size defaults to 0 (full-frame) so enabling tiles is opt-in. When
+    tile_size>0, each pixel is clipped to its owner tile (no double-count).
     """
     if num_threads is None:
         num_threads = max(1, min(32, os.cpu_count() or 4))

@@ -128,8 +128,8 @@ def main() -> None:
         type=int,
         default=100,
         help=(
-            "Write numbered splat_XXXXX.ply every N steps (0=final only). "
-            "Also refreshes splat_latest.ply on each checkpoint."
+            "Independent of --ckpt-every: every N steps write splat_XXXXX.ply "
+            "and refresh splat_latest.ply (0=no mid-train PLY; final still written)"
         ),
     )
     ap.add_argument(
@@ -141,8 +141,11 @@ def main() -> None:
     ap.add_argument(
         "--cpu-tile-size",
         type=int,
-        default=64,
-        help="CPU raster: image tile size; pixels clipped per tile (0=one full-frame pass)",
+        default=0,
+        help=(
+            "CPU raster: image tile size with per-tile pixel clip "
+            "(0=full-frame, default; >0 enables tiling)"
+        ),
     )
     ap.add_argument(
         "--cpu-method",
@@ -333,7 +336,11 @@ def main() -> None:
                         scene_scale=scene_scale,
                     ),
                 )
-                # Cheap viewer snapshot (~0.5s / ~10MB at 38k); overwrite in place.
+                print(f"  checkpoint step={step}")
+
+            # PLY schedule is independent of ckpt_every (so ply_every works when
+            # ckpt_every=0). ply_every=0 skips mid-train PLY; final export remains.
+            if args.ply_every > 0 and step % args.ply_every == 0:
                 export_gsplat_ply(
                     out / "splat_latest.ply",
                     means,
@@ -343,19 +350,17 @@ def main() -> None:
                     dc,
                     rest,
                 )
-                print(f"  checkpoint step={step}")
-                if args.ply_every > 0 and step % args.ply_every == 0:
-                    ply_n = out / f"splat_{step:05d}.ply"
-                    export_gsplat_ply(
-                        ply_n,
-                        means,
-                        scales,
-                        F.normalize(quats, dim=-1),
-                        opac,
-                        dc,
-                        rest,
-                    )
-                    print(f"  saved {ply_n.name}")
+                ply_n = out / f"splat_{step:05d}.ply"
+                export_gsplat_ply(
+                    ply_n,
+                    means,
+                    scales,
+                    F.normalize(quats, dim=-1),
+                    opac,
+                    dc,
+                    rest,
+                )
+                print(f"  saved {ply_n.name} + splat_latest.ply")
     except KeyboardInterrupt:
         print("Interrupted - writing ckpt_latest.pt (use --resume)")
         save_checkpoint(
@@ -372,6 +377,15 @@ def main() -> None:
                 cfg=cfg,
                 scene_scale=scene_scale,
             ),
+        )
+        export_gsplat_ply(
+            out / "splat_latest.ply",
+            means,
+            scales,
+            F.normalize(quats, dim=-1),
+            opac,
+            dc,
+            rest,
         )
         raise SystemExit(130)
 
