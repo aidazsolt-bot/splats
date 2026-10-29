@@ -22,25 +22,30 @@ On a GPU machine:
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu134
 python -m pip install -r engines_cuda/requirements.txt
-BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
+BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
 python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
 # Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
-The pinned gsplat source is upstream commit `512d366` (version 1.6.0). It
-requires PyTorch 2.7 or newer. Choose the PyTorch CUDA wheel for the target
-runtime; the `cu134` command above is for the CUDA 13.4 workstation, not a
-universal Colab setting. `BUILD_NO_CUDA=1` defers extension compilation until
-the first gsplat CUDA call.
+The pinned gsplat source is the commit used by Colab,
+`kyo-zzz/gsplat@8c33ba2` (version 1.6.0; upstream PR #1055). It requires
+PyTorch 2.7 or newer. Choose the PyTorch CUDA wheel for the target runtime; the
+`cu134` command above is for the CUDA 13.4 workstation, not a universal Colab
+setting. `BUILD_NO_CUDA=1` defers extension compilation until the first gsplat
+CUDA call.
 
 On Windows PowerShell, install the pinned gsplat source with:
 
 ```powershell
 $env:BUILD_NO_CUDA = "1"
-python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
+python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
 Remove-Item Env:BUILD_NO_CUDA
 ```
+
+The Windows trainer applies the same RGB-only build settings as Colab:
+`BUILD_2DGS=0`, `BUILD_3DGUT=0`, and `NUM_CHANNELS=3`. It retains the normal
+compiler optimization settings and leaves other gsplat modules enabled.
 
 ### Windows: gsplat CUDA extension build
 
@@ -65,10 +70,17 @@ adds `-allow-unsupported-compiler` and `_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
 to make this older combination build.
 
 Current CUDA 13.4 update on the same Windows host: Python 3.12,
-PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92, and gsplat 1.6.0. The gsplat
-extension has not yet built successfully with this combination: the serial
-build reaches `ProjectionUT3DGSFused.cu` and fails on `std::isfinite` being
-host-only in `Cameras.cuh`. Do not treat this stack as training-ready yet.
+PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92, and gsplat 1.6.0. An earlier build
+with the upstream gsplat commit failed in `ProjectionUT3DGSFused.cu` because
+`std::isfinite` was host-only in `Cameras.cuh`. The Colab-pinned PR #1055 commit
+includes a host/device-aware fix for that issue and the Windows trainer now
+uses that same commit and reduced RGB build. On 2026-10-29, the extension built
+and loaded successfully on this Windows host with two compiler jobs after
+adding the CUDA `include\cccl` directory to the process-local MSVC `INCLUDE`
+path. A GPU RGB forward/backward smoke test passed with finite gradients for
+means, rotations, scales, opacities, and colors. Dataset training on the GTX 1650
+then reached step 18 with 38,288 initial Gaussians at data factor 1; loss fell
+from 0.2360 to 0.1403. Full-run completion remains unverified.
 
 If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
 requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and
@@ -92,8 +104,8 @@ python -c "import torch; print(torch.__version__, torch.version.cuda)"
 directory to `PATH` (for a user install, locate it with
 `python -m site --user-site` and replace the trailing `site-packages` with
 `Scripts`). Match the installed CUDA toolkit to `torch.version.cuda`.
-On memory-limited Windows systems, `win_build_env.py` defaults CUDA extension
-compilation to one job; set `MAX_JOBS` explicitly to override it.
+On Windows, `win_build_env.py` defaults CUDA extension compilation to 2 jobs;
+set `MAX_JOBS` explicitly to override it or reduce peak host memory use.
 
 The initial `ImportError: cannot import name 'csrc' from 'gsplat'` triggers this
 build fallback; the final build error is the one to resolve. Merely importing

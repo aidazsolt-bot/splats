@@ -9,6 +9,7 @@ Call :func:`setup` before the first gsplat rasterization.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -75,6 +76,53 @@ def _activate_msvc() -> None:
     print(f"[win_build_env] activated MSVC from {bat}")
 
 
+def _configure_cuda_toolkit() -> None:
+    import torch
+
+    cuda_version = torch.version.cuda
+    if cuda_version is None:
+        return
+
+    toolkit_base = (
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        / "NVIDIA GPU Computing Toolkit"
+        / "CUDA"
+    )
+    candidates = [
+        toolkit_base / f"v{cuda_version}",
+        Path(os.environ.get(f"CUDA_PATH_V{cuda_version.replace('.', '_')}", "")),
+        Path(os.environ.get("CUDA_HOME", "")),
+        Path(os.environ.get("CUDA_PATH", "")),
+    ]
+    seen = set()
+    for root in candidates:
+        if not str(root) or root in seen:
+            continue
+        seen.add(root)
+        nvcc = root / "bin" / "nvcc.exe"
+        if not nvcc.is_file():
+            continue
+        output = subprocess.check_output(
+            [str(nvcc), "--version"], text=True, errors="replace"
+        )
+        match = re.search(r"release\s+(\d+\.\d+)", output)
+        if match and match.group(1) == cuda_version:
+            os.environ["CUDA_HOME"] = str(root)
+            os.environ["CUDA_PATH"] = str(root)
+            bin_path = str(root / "bin")
+            path_entries = os.environ.get("PATH", "").split(os.pathsep)
+            if bin_path.lower() not in {entry.lower() for entry in path_entries}:
+                os.environ["PATH"] = bin_path + os.pathsep + os.environ.get("PATH", "")
+            print(f"[win_build_env] using CUDA Toolkit {cuda_version} from {root}")
+            return
+
+    raise RuntimeError(
+        f"CUDA Toolkit {cuda_version} matching PyTorch was not found. "
+        f"Install nvcc under {toolkit_base / f'v{cuda_version}'} or set CUDA_PATH "
+        "to a matching toolkit."
+    )
+
+
 def _patch_jit_flags() -> None:
     import torch.utils.cpp_extension as ce
 
@@ -97,10 +145,23 @@ def setup() -> None:
     """No-op outside Windows; must run before ``gsplat.cuda._backend`` is imported."""
     if sys.platform != "win32":
         return
+    os.environ.setdefault("BUILD_2DGS", "0")
+    os.environ.setdefault("BUILD_3DGUT", "0")
+    os.environ.setdefault("NUM_CHANNELS", "3")
     if "gsplat.cuda._backend" in sys.modules:
         return
-    os.environ.setdefault("MAX_JOBS", "1")
+    os.environ.setdefault("MAX_JOBS", "2")
+    _configure_cuda_toolkit()
     _activate_msvc()
+    cuda_home = os.environ.get("CUDA_HOME")
+    if cuda_home:
+        cccl_include = Path(cuda_home) / "include" / "cccl"
+        if cccl_include.is_dir():
+            include_entries = os.environ.get("INCLUDE", "").split(os.pathsep)
+            if str(cccl_include).lower() not in {entry.lower() for entry in include_entries}:
+                os.environ["INCLUDE"] = (
+                    str(cccl_include) + os.pathsep + os.environ.get("INCLUDE", "")
+                )
     _patch_jit_flags()
     if not os.environ.get("TORCH_CUDA_ARCH_LIST"):
         import torch

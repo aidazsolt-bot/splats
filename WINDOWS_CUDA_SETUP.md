@@ -50,11 +50,21 @@ $env:Path = "$ninjaBin;$env:Path"
 ninja --version
 nvcc --version
 python.exe -c "import torch; print(torch.__version__, torch.version.cuda)"
+# The trainer sets these build options automatically. Set them for this
+# standalone extension check so it uses the same reduced RGB build.
+$env:BUILD_2DGS = "0"
+$env:BUILD_3DGUT = "0"
+$env:NUM_CHANNELS = "3"
 python.exe -c "from gsplat.cuda._backend import _C; assert _C is not None"
 ```
 
 The CUDA toolkit must match the CUDA version used by PyTorch, and the MSVC
-version must be supported by that toolkit. The gsplat check may compile CUDA
+version must be supported by that toolkit. `run_train.py` selects the matching
+installed toolkit before importing gsplat, even if a long-running terminal or
+VS Code inherited an outdated `CUDA_PATH`. The Windows trainer also adds the
+toolkit's `include\cccl` directory to the process-local MSVC `INCLUDE` path
+when present, so CUDA 13 headers such as `cuda/std/limits` resolve in host C++
+compilation. The gsplat check may compile CUDA
 kernels on first use. These shell environment changes last only for this
 terminal.
 
