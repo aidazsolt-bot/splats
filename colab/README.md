@@ -17,6 +17,9 @@ Branch: **`feature/colab-train` only**.
 4. Only after these pass: mount Drive, smoke, then full training.
 5. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
 
+For the failure history, verified five-minute build result, upstream references,
+and feature restrictions, see the [gsplat build report](GSPLAT_BUILD_REPORT.md).
+
 ## Pinned local-stack comparison
 
 The notebook uses the local CUDA 13.4 / PyTorch 2.15 comparison stack, not
