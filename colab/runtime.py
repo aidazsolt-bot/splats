@@ -17,8 +17,9 @@ PYTHON = VENV / "bin" / "python"
 PYTHON_VERSION = "3.12.9"
 TORCH_VERSION = "2.15.0+cu134"
 NVCC_VERSION = "13.4.92"
-TOOLKIT_VERSION = "13.4.3"
-GSPLAT_COMMIT = "8c33ba2aa4b1283376b679af397ee373d1f4c80"
+TOOLKIT_VERSION = "13.4.1"
+CCCL_VERSION = "13.3.4.3.1"
+GSPLAT_COMMIT = "8c33ba2aa4b1283376b679af397ee373d1f4c80e"
 NINJA_VERSION = "1.13.2"
 MAX_JOBS = 10
 
@@ -178,15 +179,23 @@ def install() -> None:
     runtime = Runtime(env)
     runtime.pip(["install", f"torch=={TORCH_VERSION}", "--index-url", "https://download.pytorch.org/whl/cu134"])
     runtime.pip([
-        "install", f"cuda-toolkit[nvcc,cudart,cccl]=={TOOLKIT_VERSION}",
+        "install", f"cuda-toolkit[cudart]=={TOOLKIT_VERSION}",
+        f"nvidia-cuda-nvcc=={NVCC_VERSION}", f"nvidia-cuda-crt=={NVCC_VERSION}",
+        f"nvidia-nvvm=={NVCC_VERSION}", f"nvidia-cuda-cccl=={CCCL_VERSION}",
         f"ninja=={NINJA_VERSION}", "setuptools", "wheel",
     ])
     constraints = VENV / "comparison-constraints.txt"
-    constraints.write_text(f"torch=={TORCH_VERSION}\nninja=={NINJA_VERSION}\n", encoding="utf-8")
+    constraints.write_text(
+        f"torch=={TORCH_VERSION}\nninja=={NINJA_VERSION}\n"
+        f"cuda-toolkit=={TOOLKIT_VERSION}\nnvidia-cuda-nvcc=={NVCC_VERSION}\n"
+        f"nvidia-cuda-crt=={NVCC_VERSION}\nnvidia-nvvm=={NVCC_VERSION}\n"
+        f"nvidia-cuda-cccl=={CCCL_VERSION}\n",
+        encoding="utf-8",
+    )
     runtime.pip(["install", "-c", str(constraints), "-r", "engines_cuda/requirements.txt"])
     runtime.pip([
         "install", "-c", str(constraints), "--no-build-isolation", "--force-reinstall", "--no-deps",
-        f"gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@{GSPLAT_COMMIT}",
+        f"gsplat @ git+https://github.com/kyo-zzz/gsplat.git@{GSPLAT_COMMIT}",
     ])
     runtime.pip(["install", "-c", str(constraints), "gsplat==1.6.0"])
     runtime.pip(["check"])

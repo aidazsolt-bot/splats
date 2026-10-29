@@ -28,8 +28,10 @@ CUDA 13 host/device `isfinite` fix from upstream [gsplat PR #1055](https://githu
 | Python | `3.12.9`, downloaded separately with uv |
 | PyTorch | `2.15.0+cu134` from the official `cu134` index |
 | CUDA compiler (`nvcc`) | `13.4.92` |
-| NVIDIA toolkit Python package set | `cuda-toolkit[nvcc,cudart,cccl]==13.4.3` |
-| gsplat | `1.6.0`, source commit `8c33ba2aa4b1283376b679af397ee373d1f4c80` |
+| NVIDIA runtime package set | `cuda-toolkit[cudart]==13.4.1` (required by PyTorch) |
+| NVIDIA compiler packages | `nvidia-cuda-nvcc`, `nvidia-cuda-crt`, `nvidia-nvvm`: `13.4.92` |
+| NVIDIA CCCL headers | `nvidia-cuda-cccl==13.3.4.3.1` |
+| gsplat | `1.6.0`, source commit `8c33ba2aa4b1283376b679af397ee373d1f4c80e` |
 | Ninja | `1.13.2` |
 | Parallel compiler jobs | `MAX_JOBS=10` |
 
@@ -43,6 +45,9 @@ includes its own pip; package installation does not depend on the kernel's pip
 support for cross-interpreter installs. Requirements are constrained so they cannot
 silently replace the selected PyTorch/Ninja versions. The actual gsplat source
 commit and `nvcc` version are checked before compiling.
+The unmerged gsplat PR is installed from its author's `kyo-zzz/gsplat` fork
+at the full 40-character commit above. Compiler packages are pinned separately
+so installing nvcc 13.4.92 does not override PyTorch's CUDA runtime requirements.
 
 Every diagnostic and training cell imports its dependencies and reloads the
 runtime helper independently. The helper validates the interpreter/packages and
