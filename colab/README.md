@@ -30,15 +30,35 @@ the older working CUDA 12.1 / gsplat 1.5.3 combination:
 | NVIDIA toolkit Python package set | `cuda-toolkit[nvcc,cudart,cccl]==13.4.3` |
 | gsplat | `1.6.0`, source commit `2a29ad06ba008bb34c9b942e82c2d46d39a194f4` |
 | Ninja | `1.13.2` |
-| Parallel compiler jobs | `MAX_JOBS=1` (local default: 10) |
+| Parallel compiler jobs | `MAX_JOBS=10` |
 
-These settings are at the top of the notebook. Installation and training use
+These pins are shown at the top of the notebook and implemented in
+[`runtime.py`](runtime.py). Installation and training use
 an isolated environment at `/content/splats-cu134-env`; the notebook kernel's
 preinstalled Python/PyTorch are not used for training. A bootstrap uv
 installation at `/content/splats-bootstrap` downloads Python 3.12.9 without
-replacing or restricting the notebook kernel's Python version. Requirements are constrained so they cannot
+replacing or restricting the notebook kernel's Python version. The environment
+includes its own pip; package installation does not depend on the kernel's pip
+support for cross-interpreter installs. Requirements are constrained so they cannot
 silently replace the selected PyTorch/Ninja versions. The actual gsplat source
 commit and `nvcc` version are checked before compiling.
+
+Every diagnostic and training cell imports its dependencies and reloads the
+runtime helper independently. The helper validates the interpreter/packages and
+restores `CUDA_HOME`, library paths, target architecture, extension cache and
+`MAX_JOBS=10` in the child process environment. Subprocess output is piped back
+into notebook output explicitly, not left in Colab's server logs.
+
+**Kernel restart on the same VM:** rerun the desired test cell directly. For
+training, paths saved by section 3 are reloaded automatically; remount Drive
+with section 3 if necessary. **New/replaced VM:** `/content` and its environment,
+helper checkout and extension cache are gone; rerun sections 1 and 2, then the
+tests and Drive mount. Missing setup produces an actionable error, not a
+`NameError` or an attempt to use Colab's system Python.
+
+Ten simultaneous compiler jobs can exceed a 12 GB host's available RAM.
+This is the requested parallelism, with **no silent automatic throttling**.
+An OOM kill can prevent the final resource report from being printed.
 
 NVIDIA's compiler, runtime and CCCL wheels supply the build toolkit. The
 notebook selects that toolkit explicitly; it does not install a driver or
@@ -51,7 +71,7 @@ visible failure instead of falling back to another CUDA version.
 - **2b fails:** retain the final compiler error. This phase builds on the CPU;
   verbose Ninja output plus Python's standard-library `time`/`resource`
   reporting show elapsed time, Python peak RSS and the largest reaped child
-  peak RSS, even on normal build exceptions. These are not combined
+  peak RSS, even on normal build exceptions (not after an OOM kill). These are not combined
   process-tree memory measurements; no external `time` executable is needed.
   A cache hit on rerun is not a cold-build measurement.
 - **2c fails:** the extension built, but its tiny forward/backward GPU test
@@ -85,7 +105,7 @@ CUDA Toolkit matching the PyTorch CUDA runtime + MSVC + Ninja: see
 The shared trainer requires PyTorch >=2.7. For this comparison, the notebook
 uses the local gsplat commit listed above rather than the `512d366` pin in
 the general setup instructions. `BUILD_NO_CUDA=1` defers compilation to the
-explicit build diagnostic, with one CUDA build job to limit peak host memory.
+explicit build diagnostic, with ten parallel compiler jobs.
 
 ## Train recipe
 
