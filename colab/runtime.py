@@ -70,6 +70,9 @@ def build_environment(cuda: Path) -> dict[str, str]:
         CUDA_PATH=str(cuda),
         PATH=os.pathsep.join((str(VENV / "bin"), str(cuda / "bin"), env.get("PATH", ""))),
         LD_LIBRARY_PATH=os.pathsep.join((str(cuda / "lib"), env.get("LD_LIBRARY_PATH", ""))),
+        CPATH=os.pathsep.join(filter(None, (
+            str(cuda / "include" / "cccl"), env.get("CPATH", ""),
+        ))),
         BUILD_NO_CUDA="1",
         BUILD_2DGS="0",
         BUILD_3DGUT="0",

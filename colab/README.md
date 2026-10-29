@@ -62,6 +62,9 @@ runtime helper independently. The helper validates the interpreter/packages and
 restores `CUDA_HOME`, library paths, target architecture, extension cache and
 `MAX_JOBS=10` in the child process environment. Subprocess output is piped back
 into notebook output explicitly, not left in Colab's server logs.
+The toolkit's `include/cccl` directory is prepended to `CPATH` so the host C++
+compiler can resolve `cuda/std/...` headers as well as nvcc. Existing `CPATH`
+entries are preserved.
 
 **Kernel restart on the same VM:** rerun the desired test cell directly. For
 training, paths saved by section 3 are reloaded automatically; remount Drive
