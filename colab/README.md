@@ -12,9 +12,56 @@ Branch: **`feature/colab-train` only**.
 ## Quick start (Colab)
 
 1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) (GitHub → Open in Colab).
-2. Runtime → **GPU** (T4 / L4 / A100).
-3. Run cells: clone `feature/colab-train`, mount Drive, smoke, then MCMC train.
-4. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
+2. Start a fresh **GPU** runtime with Python 3.12; prefer T4 for the local comparison.
+3. Run sections 1-2c: install, verify versions/basic CUDA, build gsplat, test forward/backward.
+4. Only after these pass: mount Drive, smoke, then full training.
+5. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
+
+## Pinned local-stack comparison
+
+The notebook reproduces the currently installed local software versions, not
+the older working CUDA 12.1 / gsplat 1.5.3 combination:
+
+| Component | Notebook pin |
+|-----------|--------------|
+| Python | 3.12 required; exact patch version printed (local: 3.12.9) |
+| PyTorch | `2.15.0+cu134` from the official `cu134` index |
+| CUDA compiler (`nvcc`) | `13.4.92` |
+| NVIDIA toolkit Python package set | `cuda-toolkit[nvcc,cudart,cccl]==13.4.3` |
+| gsplat | `1.6.0`, source commit `2a29ad06ba008bb34c9b942e82c2d46d39a194f4` |
+| Ninja | `1.13.2` |
+| Parallel compiler jobs | `MAX_JOBS=1` (local default: 10) |
+
+These settings are at the top of the notebook. Installation and training use
+an isolated environment at `/content/splats-cu134-env`; the notebook kernel's
+preinstalled PyTorch is not used. Requirements are constrained so they cannot
+silently replace the selected PyTorch/Ninja versions. The actual gsplat source
+commit and `nvcc` version are checked before compiling.
+
+NVIDIA's compiler, runtime and CCCL wheels supply the build toolkit. The
+notebook selects that toolkit explicitly; it does not install a driver or
+replace Colab's system CUDA/Python. An incompatible Colab driver causes a
+visible failure instead of falling back to another CUDA version.
+
+### Reading the comparison
+
+- **2a fails:** the problem occurs before gsplat (environment/driver/PyTorch).
+- **2b fails:** retain the final compiler error. This phase builds on the CPU;
+  verbose Ninja output plus `/usr/bin/time -v` show elapsed time and peak host
+  RAM. A cache hit on rerun is not a cold-build measurement.
+- **2c fails:** the extension built, but its tiny forward/backward GPU test
+  failed.
+- **2c passes, training fails:** investigate the dataset, training settings and
+  memory use separately.
+
+Colab uses **Linux/GCC**, not Windows/MSVC, and its driver, Python patch
+version and host RAM can differ. A T4 shares compute capability 7.5 with the
+local GTX 1650, but has more VRAM. Success on Colab helps isolate a
+Windows/toolchain issue; it does not establish that the local hardware is
+defective or provide an identical hardware benchmark.
+
+PyTorch3D is excluded from installation/build diagnostics. Section 6 can
+install it explicitly for optional cubify mesh export.
 
 ## Same on Windows laptop
 
@@ -30,9 +77,10 @@ python .\engines_cuda\run_train.py --resume `
 
 CUDA Toolkit matching the PyTorch CUDA runtime + MSVC + Ninja: see
 [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
-The shared trainer now requires PyTorch >=2.7 and pins gsplat 1.6.0 to
-upstream commit `512d366`. The Colab notebook installs that source with
-`BUILD_NO_CUDA=1` and uses one CUDA build job to limit peak host memory.
+The shared trainer requires PyTorch >=2.7. For this comparison, the notebook
+uses the local gsplat commit listed above rather than the `512d366` pin in
+the general setup instructions. `BUILD_NO_CUDA=1` defers compilation to the
+explicit build diagnostic, with one CUDA build job to limit peak host memory.
 
 ## Train recipe
 
