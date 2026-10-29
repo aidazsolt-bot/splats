@@ -7,10 +7,12 @@ The restricted gsplat 1.6.0 extension built and loaded successfully in
 hour compiling unused kernel variants before failing. CUDA 13.4 was retained;
 compiler optimization levels were not reduced.
 
-The separate GPU forward/backward check passed. Dataset training subsequently
-reached step 211/500 without a reported error or NaN. Completion of that smoke
-run, full training, refinement, and MCMC were not yet verified at the time of
-this report.
+The separate GPU forward/backward check passed. The dataset smoke run then
+**completed all 500 steps**, reporting 496.0 seconds at the final step and
+successfully exporting a PLY plus checkpoint. A user-provided screenshot shows
+the result displayed in RenderAssimp Desktop (Vulkan).
+Full training, refinement, and MCMC were not yet verified at the time of this
+report.
 
 ## Environment
 
@@ -132,10 +134,55 @@ It checked output shapes, finite RGB/alpha, a visible Gaussian, and finite
 gradients for means, quaternions, scales, opacity, and colors. It does not by
 itself validate all optional gsplat features.
 
-The dataset smoke run used 38,288 initial Gaussians, 81 train views,
-`--data-factor 4`, and `--strategy default`. At step 211, loss was 0.0853 versus
-0.2386 at step 1. Different sampled views make this indicative progress, not
-a controlled quality comparison. Gaussian count was still unchanged.
+### Completed dataset smoke run
+
+The user supplied the complete successful log after the initial report.
+The run reused the compiled extension (`ninja: no work to do.`) and used:
+
+```text
+engines_cuda/run_train.py --smoke \
+  --data /content/drive/MyDrive/blackberry-splats/dataset \
+  --out /content/drive/MyDrive/blackberry-splats/cuda_out_stable/smoke \
+  --data-factor 4 --strategy default
+```
+
+| Measurement | Result |
+|-------------|--------|
+| Views | 81 training, 12 test |
+| Steps | 500/500, normal completion |
+| Reported elapsed time at step 500 | 496.0 s (8 min 16 s), before final export |
+| Average training-loop throughput | Approximately 1.01 steps/s |
+| Image loading | Cache off; one image loaded from disk per step |
+| Initial and final Gaussian count | 38,288 |
+| Active SH degree throughout logged run | 0 |
+| Loss, first / last step | 0.2386 / 0.0859 |
+| Final L1 / SSIM loss / alpha loss | 0.0664 / 0.1343 / 0.0360 |
+| Export | `splat_00500.ply` plus checkpoint in the smoke output directory |
+
+Final log excerpt:
+
+```text
+step=499/500 loss=0.0758 l1=0.0508 ssim=0.1432 alpha=0.0409 n=38288 sh=0 (495.0s)
+step=500/500 loss=0.0859 l1=0.0664 ssim=0.1343 alpha=0.0360 n=38288 sh=0 (496.0s)
+  saved /content/drive/MyDrive/blackberry-splats/cuda_out_stable/smoke/splat_00500.ply + checkpoint
+Training finished. Results in /content/drive/MyDrive/blackberry-splats/cuda_out_stable/smoke
+```
+
+No error or NaN was reported. Loss varies between sampled views; first/last
+losses are not a controlled quality comparison. The `ssim` log field is the
+loss term, not a standalone image-quality SSIM score. The unchanged Gaussian
+count and SH degree mean this smoke run does not establish refinement or
+higher-order SH behavior. It also does not test resume, MCMC, or the full
+training schedule.
+
+User-provided visual result after the smoke run:
+
+![500-step smoke result displayed in RenderAssimp Desktop using Vulkan](smoke_00500_viewer.png)
+
+The screenshot shows a recognizable blackberry on a black background, still
+soft with visible stray splats after this short run. It is a visual sanity
+check, not evidence of final reconstruction quality, color-space accuracy,
+or numerical equivalence between viewers.
 
 ## What remains available, and what is restricted
 
