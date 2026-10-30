@@ -103,7 +103,11 @@ def main() -> None:
         "--prefer",
         type=str,
         default="nvidia",
-        help="OpenCL device name substring (default: nvidia). Use '' for auto.",
+        help=(
+            "OpenCL device name substring (default: nvidia). "
+            "MateBook Arc: arc|intel; AMD: amd|radeon; use '' for auto. "
+            "See engines_opencl/list_devices.py"
+        ),
     )
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
@@ -159,7 +163,8 @@ def main() -> None:
         print(f"OpenCL init failed: {e}")
         if not args.cpu_fallback:
             raise SystemExit(
-                "No OpenCL device. Pass --prefer nvidia or --device-index 1, "
+                "No OpenCL device. Try --prefer arc|intel|amd|nvidia "
+                "(see list_devices.py), --device-index N, "
                 "or --cpu-fallback for pure CPU training."
             )
         print("Using CPU rasterizer fallback for the whole step")

@@ -19,7 +19,12 @@ git checkout feature/colab-train && git pull
 | [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussians (Open3D Poisson or PyTorch3D cubify) |
 | [`engines/`](engines/) | CPU deterministic splat + mesh (no training) |
 
-Also in-tree (secondary): [`engines_cpu_train/`](engines_cpu_train/), [`engines_opencl/`](engines_opencl/), [`engines_povray/`](engines_povray/).
+Also in-tree (secondary):
+
+- [`engines_opencl/`](engines_opencl/) - no-CUDA hosts (Huawei MateBook **Intel Arc**, AMD, NVIDIA OpenCL); GPU command examples in that README
+- [`engines_cpu_train/`](engines_cpu_train/) - pure PyTorch CPU train
+- [`engines_povray/`](engines_povray/) - POV-Ray export/render
+
 
 Windows CUDA setup: [`WINDOWS_CUDA_SETUP.md`](WINDOWS_CUDA_SETUP.md) · [`engines_cuda/README.md`](engines_cuda/README.md)  
 Colab: [`colab/README.md`](colab/README.md)
