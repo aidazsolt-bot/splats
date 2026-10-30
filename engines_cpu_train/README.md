@@ -25,21 +25,23 @@ OpenCL/CPU train flags: `--cpu-method batched|loop`, `--cpu-batch-size`,
 ## Usage
 
 ```bash
-python -m venv ~/tmp/bn_cpu_train_venv
-source ~/tmp/bn_cpu_train_venv/bin/activate
-pip install -r engines_cpu_train/requirements.txt
+# System python3 on this host (torch / lpips already available site-wide).
+# Optional: python3 -m pip install -r engines_cpu_train/requirements.txt
 
 # full quality schedule (long on CPU)
-python engines_cpu_train/run_train.py \
+python3 engines_cpu_train/run_train.py \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 # Windows: --data X:\blackberry-splats\dataset
 
 # short verification
-python engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"
+python3 engines_cpu_train/run_train.py --smoke --out "$HOME/tmp/cpu_train_smoke"
+
+# Colab-notebook smoke equivalent (500 steps, factor 4, default-strategy knobs)
+python3 engines_cpu_train/run_train.py --colab-smoke --out "$HOME/tmp/cpu_train_colab_smoke"
 
 # resume after interrupt (same --out / schedule flags)
-python engines_cpu_train/run_train.py --resume \
+python3 engines_cpu_train/run_train.py --resume \
   --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
   --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cpu_train_out"
 # Windows: --data X:\blackberry-splats\dataset
