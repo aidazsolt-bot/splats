@@ -19,7 +19,7 @@ TORCH_VERSION = "2.15.0+cu134"
 NVCC_VERSION = "13.4.92"
 TOOLKIT_VERSION = "13.4.1"
 CCCL_VERSION = "13.3.4.3.1"
-GSPLAT_COMMIT = "8c33ba2aa4b1283376b679af397ee373d1f4c80e"
+GSPLAT_COMMIT = "512d366b67073d77ca099ede742683c165dfc23b"
 NINJA_VERSION = "1.13.2"
 MAX_JOBS = 10
 
@@ -201,7 +201,7 @@ def install() -> None:
     runtime.pip(["install", "-c", str(constraints), "-r", "engines_cuda/requirements.txt"])
     runtime.pip([
         "install", "-c", str(constraints), "--no-build-isolation", "--force-reinstall", "--no-deps",
-        f"gsplat @ git+https://github.com/kyo-zzz/gsplat.git@{GSPLAT_COMMIT}",
+        f"gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@{GSPLAT_COMMIT}",
     ])
     runtime.pip(["install", "-c", str(constraints), "gsplat==1.6.0"])
     runtime.pip(["check"])

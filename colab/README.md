@@ -23,8 +23,8 @@ and feature restrictions, see the [gsplat build report](GSPLAT_BUILD_REPORT.md).
 ## Pinned local-stack comparison
 
 The notebook uses the local CUDA 13.4 / PyTorch 2.15 comparison stack, not
-the older working CUDA 12.1 / gsplat 1.5.3 combination. It pins the
-CUDA 13 host/device `isfinite` fix from upstream [gsplat PR #1055](https://github.com/nerfstudio-project/gsplat/pull/1055):
+the older working CUDA 12.1 / gsplat 1.5.3 combination. gsplat matches
+`engines_cuda/requirements.txt` (upstream `main` tip `512d366`):
 
 | Component | Notebook pin |
 |-----------|--------------|
@@ -34,7 +34,7 @@ CUDA 13 host/device `isfinite` fix from upstream [gsplat PR #1055](https://githu
 | NVIDIA runtime package set | `cuda-toolkit[cudart]==13.4.1` (required by PyTorch) |
 | NVIDIA compiler packages | `nvidia-cuda-nvcc`, `nvidia-cuda-crt`, `nvidia-nvvm`: `13.4.92` |
 | NVIDIA CCCL headers | `nvidia-cuda-cccl==13.3.4.3.1` |
-| gsplat | `1.6.0`, source commit `8c33ba2aa4b1283376b679af397ee373d1f4c80e` |
+| gsplat | `1.6.0`, source commit `512d366b67073d77ca099ede742683c165dfc23b` |
 | Ninja | `1.13.2` |
 | Parallel compiler jobs | `MAX_JOBS=10` |
 
@@ -48,9 +48,9 @@ includes its own pip; package installation does not depend on the kernel's pip
 support for cross-interpreter installs. Requirements are constrained so they cannot
 silently replace the selected PyTorch/Ninja versions. The actual gsplat source
 commit and `nvcc` version are checked before compiling.
-The unmerged gsplat PR is installed from its author's `kyo-zzz/gsplat` fork
-at the full 40-character commit above. Compiler packages are pinned separately
-so installing nvcc 13.4.92 does not override PyTorch's CUDA runtime requirements.
+gsplat is installed from `nerfstudio-project/gsplat` at the full 40-character
+commit above. Compiler packages are pinned separately so installing nvcc
+13.4.92 does not override PyTorch's CUDA runtime requirements.
 
 The build is restricted to this notebook's RGB 3DGS training path:
 `BUILD_2DGS=0`, `BUILD_3DGUT=0`, and `NUM_CHANNELS=3`. This skips unused
@@ -123,9 +123,9 @@ python .\engines_cuda\run_train.py --resume `
 CUDA Toolkit matching the PyTorch CUDA runtime + MSVC + Ninja: see
 [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
 The shared trainer requires PyTorch >=2.7. For this comparison, the notebook
-uses the local gsplat commit listed above rather than the `512d366` pin in
-the general setup instructions. `BUILD_NO_CUDA=1` defers compilation to the
-explicit build diagnostic, with ten parallel compiler jobs.
+uses the same gsplat commit `512d366` as `engines_cuda/requirements.txt`.
+`BUILD_NO_CUDA=1` defers compilation to the explicit build diagnostic, with
+ten parallel compiler jobs.
 
 ## Train recipe
 
