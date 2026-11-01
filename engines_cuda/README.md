@@ -65,9 +65,12 @@ Previously tested setup (training ran to step 20000):
 | Ninja | 1.13.2 |
 | NumPy / Pillow | 1.26.4 / 12.1.1 |
 
-MSVC 17.14 is newer than CUDA 12.1 officially supports; [win_build_env.py](win_build_env.py)
-adds `-allow-unsupported-compiler` and `_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH`
-to make this older combination build.
+This Huawei Mate build host (MACH-WX9, GeForce MX150 sm_61, CUDA Toolkit 12.1,
+driver 582.78) has MSVC 14.38.33130 and 14.44.35207 side by side.
+[win_build_env.py](win_build_env.py) calls `vcvars64.bat -vcvars_ver=14.38` so
+nvcc sees `cl` 19.38. The 14.44 row above records an older GTX 1650 test. The
+JIT patch still passes `-allow-unsupported-compiler` and
+`_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH` if the STL version check fires.
 
 Current CUDA 13.4 update on the same Windows host: Python 3.12,
 PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92, and gsplat 1.6.0. An earlier build

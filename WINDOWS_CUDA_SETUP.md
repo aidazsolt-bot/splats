@@ -22,15 +22,24 @@ the C++ workload if it is missing.
 
 ## Activate MSVC in the training terminal
 
-A new ordinary PowerShell does **not** automatically activate MSVC. Either use
-Developer PowerShell for VS 2022, or run this in the current PowerShell:
+This Huawei Mate build host (MACH-WX9, GeForce MX150, CUDA Toolkit 12.1) has
+MSVC **14.38.33130** and **14.44.35207** side by side. Toolkit 12.1 accepts
+`cl` 19.38. A bare `vcvars64.bat` or Developer PowerShell selects 14.44, and
+nvcc then rejects the host compiler. Pin **14.38** in the same terminal that
+trains. `engines_cuda/win_build_env.py` applies the same pin when training starts.
 
 ```powershell
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (!(Test-Path $vswhere)) { throw "Install Visual Studio 2022 Build Tools first." }
 $vs = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (!$vs) { throw "MSVC x64 tools missing; modify Build Tools in Visual Studio Installer." }
-& "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+$vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+if (!(Test-Path $vcvars)) { throw "vcvars64.bat missing under $vs" }
+cmd /c "call `"$vcvars`" -vcvars_ver=14.38 && set" | ForEach-Object {
+    if ($_ -match '^(?<k>[^=]+)=(?<v>.*)$') {
+        Set-Item -Path "Env:$($Matches.k)" -Value $Matches.v
+    }
+}
 where.exe cl
 cl
 ```

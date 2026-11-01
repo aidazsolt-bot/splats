@@ -26,6 +26,10 @@ _COMPAT_CUDA_CFLAGS = [
     "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
     "-Xcompiler=/Zc:preprocessor",
 ]
+# Huawei Mate MACH-WX9: CUDA Toolkit 12.1 accepts cl 19.38 (toolset 14.38).
+# 14.44 is also installed; bare vcvars64.bat selects it and nvcc rejects the host compiler.
+_VCVARS_VER = "14.38"
+_CL_VERSION_MARK = "Version 19.38."
 
 
 def _find_vcvars() -> Path | None:
@@ -55,25 +59,50 @@ def _find_vcvars() -> Path | None:
     return None
 
 
+def _cl_report() -> str:
+    cl = shutil.which("cl")
+    if not cl:
+        return ""
+    proc = subprocess.run([cl], capture_output=True, text=True, errors="replace")
+    return (proc.stderr or "") + (proc.stdout or "")
+
+
+def _cl_matches_pin() -> bool:
+    return _CL_VERSION_MARK in _cl_report()
+
+
 def _activate_msvc() -> None:
-    if shutil.which("cl"):
+    if _cl_matches_pin():
         return
     bat = _find_vcvars()
     if bat is None:
         raise RuntimeError(
             "MSVC (cl.exe) not found. Install Visual Studio 2022 Build Tools with "
-            "'Desktop development with C++' (see WINDOWS_CUDA_SETUP.md)."
+            "'Desktop development with C++' and the MSVC v143 toolset "
+            f"{_VCVARS_VER} (see WINDOWS_CUDA_SETUP.md)."
         )
-    out = subprocess.check_output(
-        f'cmd /s /c ""{bat}" >nul && set"', text=True, errors="replace"
-    )
+    cmd = f'cmd /s /c ""{bat}" -vcvars_ver={_VCVARS_VER} >nul && set"'
+    try:
+        out = subprocess.check_output(
+            cmd, text=True, errors="replace", stderr=subprocess.STDOUT
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.output or "").strip()
+        raise RuntimeError(
+            f"vcvars64.bat -vcvars_ver={_VCVARS_VER} failed ({bat}). "
+            f"Install MSVC v143 toolset {_VCVARS_VER} side-by-side. {detail}"
+        ) from exc
     for line in out.splitlines():
         key, sep, value = line.partition("=")
         if sep and key:
             os.environ[key] = value
-    if not shutil.which("cl"):
-        raise RuntimeError(f"cl.exe still not on PATH after running {bat}")
-    print(f"[win_build_env] activated MSVC from {bat}")
+    if not _cl_matches_pin():
+        report = " ".join(_cl_report().split())
+        raise RuntimeError(
+            f"cl.exe is not toolset {_VCVARS_VER} (expected {_CL_VERSION_MARK}) "
+            f"after {bat}. {report}"
+        )
+    print(f"[win_build_env] activated MSVC toolset {_VCVARS_VER} from {bat}")
 
 
 def _configure_cuda_toolkit() -> None:
