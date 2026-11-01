@@ -86,14 +86,14 @@ def build_environment(cuda: Path) -> dict[str, str]:
             str(cuda / "include" / "cccl"), env.get("CPATH", ""),
         ))),
         BUILD_NO_CUDA="1",
-        BUILD_2DGS="0",
-        BUILD_3DGUT="0",
-        NUM_CHANNELS="3",
         MAX_JOBS=str(MAX_JOBS),
         VERBOSE="1",
         PYTHONUNBUFFERED="1",
         NINJA_STATUS="[%f/%t %es] ",
     )
+    # Full gsplat default (2DGS/3DGUT on, all SupportedChannels); drop legacy RGB-only pins.
+    for key in ("BUILD_2DGS", "BUILD_3DGUT", "NUM_CHANNELS"):
+        env.pop(key, None)
     return env
 
 
@@ -166,7 +166,7 @@ print(json.dumps({
             raise RuntimeError(f"Expected {name}={value}, got {actual[name]}. Rerun section 2.")
     env["TORCH_CUDA_ARCH_LIST"] = actual["arch"]
     env["TORCH_EXTENSIONS_DIR"] = str(
-        ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-rgb3dgs-sm{actual['arch'].replace('.', '')}"
+        ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-full-sm{actual['arch'].replace('.', '')}"
     )
     env.pop("GSPLAT_USE_PREBUILT", None)
     runtime = Runtime(env)
@@ -296,7 +296,6 @@ def install_prebuilt_extension(runtime: Runtime, *, quiet: bool = False) -> bool
 
     runtime.env["TORCH_EXTENSIONS_DIR"] = str(cache)
     runtime.env["GSPLAT_USE_PREBUILT"] = "1"
-    # Avoid accidental restricted JIT if something still calls build_and_load.
     for key in ("BUILD_2DGS", "BUILD_3DGUT", "NUM_CHANNELS"):
         runtime.env.pop(key, None)
     _install_prebuilt_site_hook()

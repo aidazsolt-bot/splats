@@ -174,9 +174,9 @@ def setup() -> None:
     """No-op outside Windows; must run before ``gsplat.cuda._backend`` is imported."""
     if sys.platform != "win32":
         return
-    os.environ.setdefault("BUILD_2DGS", "0")
-    os.environ.setdefault("BUILD_3DGUT", "0")
-    os.environ.setdefault("NUM_CHANNELS", "3")
+    # Full gsplat default: do not pin BUILD_2DGS/BUILD_3DGUT/NUM_CHANNELS.
+    for key in ("BUILD_2DGS", "BUILD_3DGUT", "NUM_CHANNELS"):
+        os.environ.pop(key, None)
     if "gsplat.cuda._backend" in sys.modules:
         return
     os.environ.setdefault("MAX_JOBS", "2")

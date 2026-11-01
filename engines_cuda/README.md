@@ -43,9 +43,9 @@ python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/
 Remove-Item Env:BUILD_NO_CUDA
 ```
 
-The Windows trainer applies the same RGB-only build settings as Colab:
-`BUILD_2DGS=0`, `BUILD_3DGUT=0`, and `NUM_CHANNELS=3`. It retains the normal
-compiler optimization settings and leaves other gsplat modules enabled.
+The Windows trainer uses the **full** gsplat default build (2DGS/3DGUT enabled,
+complete `SupportedChannels` list). First JIT on MSVC can be very slow; Colab T4
+can skip it via the Drive prebuilt `.so`.
 
 ### Windows: gsplat CUDA extension build
 
@@ -75,8 +75,7 @@ no longer the documented default.
 MSVC `std::isfinite` in device code (`Cameras.cuh`) remains a Windows-only
 compile risk on some gsplat revisions; Linux/GCC maps it to
 `__builtin_isfinite` and builds cleanly. Prefer matching the Colab commit
-`512d366` and the reduced RGB env (`BUILD_2DGS=0`, `BUILD_3DGUT=0`,
-`NUM_CHANNELS=3`) when iterating on Windows.
+`512d366` when iterating on Windows.
 
 If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
 requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and

@@ -16,7 +16,7 @@ Branch: **`feature/colab-train` only**.
 3. Run sections 1-2c: install, verify versions/basic CUDA, load gsplat, test forward/backward.
    On T4, 2b mounts Drive and loads the prebuilt `gsplat_cuda.so` under
    `MyDrive/blackberry-splats/gsplat-prebuilt/py312-torch215-cu134-512d366-sm75/`
-   (skips the long compile). Other GPUs still JIT the restricted RGB-3DGS set.
+   (skips the long compile). Other GPUs JIT the full gsplat default (can take a long time).
 4. Section 3 remounts Drive for dataset/output paths; then smoke and full training.
 5. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
 
@@ -57,10 +57,10 @@ commit above. Compiler packages are pinned separately so installing nvcc
 
 **T4 / sm_75:** section 2b prefers the Drive prebuilt full `gsplat_cuda.so`
 (under `MyDrive/blackberry-splats/gsplat-prebuilt/...-sm75/`) and injects it
-before `import gsplat`, so training skips ninja. **Other GPUs:** fall back to a
-restricted RGB JIT (`BUILD_2DGS=0`, `BUILD_3DGUT=0`, `NUM_CHANNELS=3`) with a
-separate `rgb3dgs` cache. Adam, relocation (including MCMC), and loss modules
-remain enabled in both paths.
+before `import gsplat`, so training skips ninja. **Other GPUs:** JIT the same
+full default (2DGS/3DGUT on, all `SupportedChannels`) into a `full-sm*` cache.
+The old RGB-only pins (`BUILD_2DGS=0`, `BUILD_3DGUT=0`, `NUM_CHANNELS=3`) are
+decommissioned.
 
 Every diagnostic and training cell imports its dependencies and reloads the
 runtime helper independently. The helper validates the interpreter/packages and

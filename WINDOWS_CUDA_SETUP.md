@@ -63,11 +63,8 @@ $env:Path = "$ninjaBin;$env:Path"
 ninja --version
 nvcc --version
 python.exe -c "import torch; print(torch.__version__, torch.version.cuda)"
-# The trainer sets these build options automatically. Set them for this
-# standalone extension check so it uses the same reduced RGB build.
-$env:BUILD_2DGS = "0"
-$env:BUILD_3DGUT = "0"
-$env:NUM_CHANNELS = "3"
+# Full gsplat default (2DGS/3DGUT enabled, all SupportedChannels). First JIT can
+# take a long time on MSVC; prefer matching the Colab prebuilt when possible.
 python.exe -c "from gsplat.cuda._backend import _C; assert _C is not None"
 ```
 
