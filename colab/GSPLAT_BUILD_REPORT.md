@@ -24,7 +24,7 @@ unverified.
 | Driver | 580.82.07; `nvidia-smi` reports CUDA compatibility 13.0 |
 | Host compiler | Ubuntu GCC/G++ 13.3.0 |
 | Notebook kernel | Python 3.13.16 |
-| Isolated training interpreter | Python 3.12.9 |
+| Isolated training interpreter | Python 3.12.15 |
 | PyTorch | 2.15.0+cu134 |
 | nvcc | 13.4.92 |
 | Compiler packages | `nvidia-cuda-nvcc`, `nvidia-cuda-crt`, `nvidia-nvvm`: 13.4.92 |

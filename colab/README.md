@@ -31,7 +31,7 @@ the older working CUDA 12.1 / gsplat 1.5.3 combination. gsplat matches
 
 | Component | Notebook pin |
 |-----------|--------------|
-| Python | `3.12.9`, downloaded separately with uv |
+| Python | `3.12.15`, downloaded separately with uv |
 | PyTorch | `2.15.0+cu134` from the official `cu134` index |
 | CUDA compiler (`nvcc`) | `13.4.92` |
 | NVIDIA runtime package set | `cuda-toolkit[cudart]==13.4.1` (required by PyTorch) |
@@ -45,7 +45,7 @@ These pins are shown at the top of the notebook and implemented in
 [`runtime.py`](runtime.py). Installation and training use
 an isolated environment at `/content/splats-cu134-env`; the notebook kernel's
 preinstalled Python/PyTorch are not used for training. A bootstrap uv
-installation at `/content/splats-bootstrap` downloads Python 3.12.9 without
+installation at `/content/splats-bootstrap` downloads Python 3.12.15 without
 replacing or restricting the notebook kernel's Python version. The environment
 includes its own pip; package installation does not depend on the kernel's pip
 support for cross-interpreter installs. Requirements are constrained so they cannot

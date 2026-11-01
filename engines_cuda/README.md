@@ -59,7 +59,7 @@ Previously tested setup (training ran to step 20000):
 | CUDA Toolkit (`nvcc`) | 12.1 (V12.1.66) |
 | Visual Studio Build Tools | 2022, 17.14 |
 | MSVC toolset / `cl.exe` | 14.44.35207 / 19.44.35229 (x64) |
-| Python | 3.12.9 (x64) |
+| Python | 3.12.15 (x64) |
 | PyTorch | 2.5.1+cu121 |
 | gsplat | 1.5.3 (CUDA extension JIT-compiled, ~5 min first run) |
 | Ninja | 1.13.2 |
