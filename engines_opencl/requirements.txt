@@ -1,6 +1,7 @@
+# Align torch floor with engines_cuda host stack (2.15.0+cu134 / CPU wheels OK).
 pyopencl>=2024.1
-numpy
-torch>=2.1.0
-pillow
-scipy
-tqdm
+numpy==2.5.4
+torch==2.15.0
+pillow==10.1.0
+scipy==1.18.1
+tqdm==4.68.3

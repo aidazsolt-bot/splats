@@ -1,19 +1,22 @@
 # Install on a machine with NVIDIA GPU + matching CUDA toolkit.
-# Install a PyTorch wheel whose CUDA version matches the machine/runtime.
-# Example (CUDA 13.4):
-#   pip install torch --index-url https://download.pytorch.org/whl/cu134
+# Current host stack (Rocky Linux): PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92,
+# gsplat 1.6.0 from main @ 512d366b67073d77ca099ede742683c165dfc23b.
+#
+#   python -m pip install torch==2.15.0 torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cu134
 #   python -m pip install -r engines_cuda/requirements.txt
 #   BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
 #   python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 #
+# gsplat 1.6.0 is not on PyPI yet; install from the git pin above (same commit as main).
 # pytorch3d is separate: its setup imports torch, so pip build isolation fails
 # unless torch is already installed and --no-build-isolation is used.
 
-torch>=2.7.0
-ninja
-numpy
-pillow
-scipy
-tqdm
-open3d
-imageio
+torch==2.15.0
+torchvision==0.29.2
+ninja==1.13.2
+numpy==2.5.4
+pillow==10.1.0
+scipy==1.18.1
+tqdm==4.68.3
+open3d==0.20.0
+imageio==2.38.1

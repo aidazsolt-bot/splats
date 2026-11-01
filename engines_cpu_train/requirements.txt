@@ -1,8 +1,8 @@
-# CPU training - no CUDA wheels required
-torch>=2.1.0
-numpy
-pillow
-scipy
-tqdm
-lpips
-open3d
+# CPU training - no CUDA wheels required. Versions match the current host stack.
+torch==2.15.0
+numpy==2.5.4
+pillow==10.1.0
+scipy==1.18.1
+tqdm==4.68.3
+lpips==0.1.4
+open3d==0.20.0

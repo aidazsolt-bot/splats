@@ -1,5 +1,5 @@
-numpy
+numpy==2.5.4
 opencv-python-headless
-open3d
-scipy
-pillow
+open3d==0.20.0
+scipy==1.18.1
+pillow==10.1.0

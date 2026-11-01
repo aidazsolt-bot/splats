@@ -2,5 +2,6 @@
 #   python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 #
 # Needed for: mesh_from_ckpt.py --backend pytorch3d
+# Host currently has pytorch3d 0.7.9 from this git source.
 
 pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git
