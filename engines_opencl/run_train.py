@@ -110,6 +110,14 @@ def main() -> None:
         ),
     )
     ap.add_argument("--smoke", action="store_true")
+    ap.add_argument(
+        "--colab-smoke",
+        action="store_true",
+        help=(
+            "Match Colab engines_cuda --smoke --data-factor 4 --strategy default: "
+            "500 steps, factor 4, SH degree 0, draw cap 50000, scale_reg 0.01"
+        ),
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
         "--cpu-fallback",
@@ -134,8 +142,31 @@ def main() -> None:
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    steps = 2 if args.smoke else args.steps
-    factor = 8 if args.smoke else args.data_factor
+    if args.smoke and args.colab_smoke:
+        raise SystemExit("Use either --smoke or --colab-smoke, not both")
+    if args.colab_smoke:
+        # Colab smoke stays at SH0 (active = min(3, step // 1000)) and does not
+        # refine before step 500. Draw cap matches engines_cpu_train --colab-smoke.
+        steps = 500
+        factor = 4
+        max_draw = 50000
+        max_radius = 28
+        scale_reg = 0.01
+        sh_degree = 0
+    elif args.smoke:
+        steps = 2
+        factor = 8
+        max_draw = 1500
+        max_radius = 24
+        scale_reg = 0.0
+        sh_degree = None
+    else:
+        steps = args.steps
+        factor = args.data_factor
+        max_draw = 20000
+        max_radius = 24
+        scale_reg = 0.0
+        sh_degree = None
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -148,6 +179,11 @@ def main() -> None:
         "prefer": args.prefer.strip(),
         "cpu_fallback": bool(args.cpu_fallback),
         "smoke": bool(args.smoke),
+        "colab_smoke": bool(args.colab_smoke),
+        "max_draw": max_draw,
+        "max_radius": max_radius,
+        "scale_reg": scale_reg,
+        "sh_degree": 0 if sh_degree == 0 else "schedule",
         "device_index": args.device_index,
     }
 
@@ -228,8 +264,12 @@ def main() -> None:
             print(f"  warn: optimizer state skipped ({e})")
 
     t0 = time.time()
-    max_draw = 1500 if args.smoke else 20000
     step = start_step
+
+    def _sh_degree(step_i: int) -> int:
+        if sh_degree is not None:
+            return sh_degree
+        return min(2, step_i // 500)
     try:
         for step in range(start_step + 1, steps + 1):
             sample = ds[random.randrange(len(ds))]
@@ -251,15 +291,15 @@ def main() -> None:
                     K,
                     w,
                     h,
-                    sh_degree=min(2, step // 500),
+                    sh_degree=_sh_degree(step),
                     cl_rasterizer=cl,
                     max_gaussians=max_draw,
-                    max_radius=24,
+                    max_radius=max_radius,
                 )
             else:
                 rgb, alph = _cpu_raster().rasterize_gaussians_cpu(
                     means, scales, quats, opac, dc, rest, viewmat, K, w, h,
-                    sh_degree=min(2, step // 500), max_gaussians=max_draw, max_radius=24,
+                    sh_degree=_sh_degree(step), max_gaussians=max_draw, max_radius=max_radius,
                 )
 
             bkgd = torch.rand(1, 1, 3)
@@ -268,6 +308,8 @@ def main() -> None:
             mask = (alpha > 0.05).float()
             loss = (1 - 0.2) * losses.l1_masked(pred, gt, mask) + 0.2 * losses.ssim_loss(pred, gt, mask)
             loss = loss + 0.1 * losses.alpha_bce(alph, alpha)
+            if scale_reg > 0:
+                loss = loss + scale_reg * torch.exp(scales).mean()
 
             opt.zero_grad(set_to_none=True)
             loss.backward()
