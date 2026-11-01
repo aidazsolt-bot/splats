@@ -135,6 +135,42 @@ def main() -> None:
         default=50,
         help="Write ckpt_latest.pt every N steps (0=end / interrupt only)",
     )
+    ap.add_argument(
+        "--ply-every",
+        type=int,
+        default=100,
+        help=(
+            "Independent of --ckpt-every: every N steps write splat_XXXXX.ply "
+            "and refresh splat_latest.ply (0=no mid-train PLY; final still written)"
+        ),
+    )
+    ap.add_argument(
+        "--cpu-batch-size",
+        type=int,
+        default=64,
+        help="CPU raster: Gaussians per stencil batch (batched method)",
+    )
+    ap.add_argument(
+        "--cpu-tile-size",
+        type=int,
+        default=0,
+        help=(
+            "CPU raster: image tile size with per-tile pixel clip "
+            "(0=full-frame, default; >0 enables tiling)"
+        ),
+    )
+    ap.add_argument(
+        "--cpu-method",
+        choices=("batched", "loop"),
+        default="batched",
+        help="CPU raster backend (batched=fast stencil, loop=legacy)",
+    )
+    ap.add_argument(
+        "--cpu-threads",
+        type=int,
+        default=0,
+        help="torch.set_num_threads for CPU raster (0=auto)",
+    )
     args = ap.parse_args()
 
     losses = _losses_from_cpu()
@@ -185,7 +221,12 @@ def main() -> None:
         "scale_reg": scale_reg,
         "sh_degree": 0 if sh_degree == 0 else "schedule",
         "device_index": args.device_index,
+        "cpu_batch_size": int(args.cpu_batch_size),
+        "cpu_tile_size": int(args.cpu_tile_size),
+        "cpu_method": str(args.cpu_method),
+        "cpu_threads": int(args.cpu_threads),
     }
+    cpu_threads = None if args.cpu_threads <= 0 else int(args.cpu_threads)
 
     cl = None
     prefer = args.prefer.strip() or None
@@ -295,11 +336,19 @@ def main() -> None:
                     cl_rasterizer=cl,
                     max_gaussians=max_draw,
                     max_radius=max_radius,
+                    batch_size=args.cpu_batch_size,
+                    tile_size=args.cpu_tile_size,
+                    method=args.cpu_method,
+                    num_threads=cpu_threads,
                 )
             else:
                 rgb, alph = _cpu_raster().rasterize_gaussians_cpu(
                     means, scales, quats, opac, dc, rest, viewmat, K, w, h,
                     sh_degree=_sh_degree(step), max_gaussians=max_draw, max_radius=max_radius,
+                    batch_size=args.cpu_batch_size,
+                    tile_size=args.cpu_tile_size,
+                    method=args.cpu_method,
+                    num_threads=cpu_threads,
                 )
 
             bkgd = torch.rand(1, 1, 3)
@@ -335,6 +384,30 @@ def main() -> None:
                     ),
                 )
                 print(f"  checkpoint step={step}")
+
+            # PLY schedule is independent of ckpt_every (so ply_every works when
+            # ckpt_every=0). ply_every=0 skips mid-train PLY; final export remains.
+            if args.ply_every > 0 and step % args.ply_every == 0:
+                export_gsplat_ply(
+                    out / "splat_latest.ply",
+                    means,
+                    scales,
+                    F.normalize(quats, dim=-1),
+                    opac,
+                    dc,
+                    rest,
+                )
+                ply_n = out / f"splat_{step:05d}.ply"
+                export_gsplat_ply(
+                    ply_n,
+                    means,
+                    scales,
+                    F.normalize(quats, dim=-1),
+                    opac,
+                    dc,
+                    rest,
+                )
+                print(f"  saved {ply_n.name} + splat_latest.ply")
     except KeyboardInterrupt:
         print("Interrupted - writing ckpt_latest.pt (use --resume)")
         save_checkpoint(
@@ -352,10 +425,28 @@ def main() -> None:
                 scene_scale=scene_scale,
             ),
         )
+        export_gsplat_ply(
+            out / "splat_latest.ply",
+            means,
+            scales,
+            F.normalize(quats, dim=-1),
+            opac,
+            dc,
+            rest,
+        )
         raise SystemExit(130)
 
     ply = out / "splat_opencl.ply"
     export_gsplat_ply(ply, means, scales, F.normalize(quats, dim=-1), opac, dc, rest)
+    export_gsplat_ply(
+        out / "splat_latest.ply",
+        means,
+        scales,
+        F.normalize(quats, dim=-1),
+        opac,
+        dc,
+        rest,
+    )
     save_checkpoint(
         out,
         _pack(

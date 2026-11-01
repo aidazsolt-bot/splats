@@ -43,7 +43,7 @@ python engines_opencl/run_train.py --prefer arc \
 # Colab-smoke-sized run (500 steps, factor 4) on MateBook
 python engines_opencl/run_train.py --prefer arc \
   --data X:\blackberry-splats\dataset --out opencl_out_mate \
-  --data-factor 4 --steps 500 --ckpt-every 50
+  --data-factor 4 --steps 500 --ckpt-every 50 --ply-every 100
 
 # if list_devices shows "Intel(R) Arc(TM) ..." but not the word Arc, try:
 python engines_opencl/run_train.py --prefer intel \
@@ -94,12 +94,24 @@ python engines_opencl/run_train.py --prefer arc --resume \
   --data-factor 4 --steps 500
 ```
 
-Ctrl-C writes `ckpt_latest.pt`.
+Ctrl-C writes `ckpt_latest.pt` (and refreshes `splat_latest.ply`).
 
-## Checkpoints
+## Checkpoints and PLY
 
 - `ckpt_latest.pt` every `--ckpt-every` steps (default 50), also on Ctrl-C
-- Final PLY: `splat_opencl.ply`
+- Mid-train PLY via `--ply-every` (default 100): `splat_XXXXX.ply` +
+  `splat_latest.ply` (independent of ckpt schedule; `0` = final only)
+- Final: `splat_opencl.ply` + `splat_latest.ply`
+
+Export is ~0.5s / ~10MB at 38k Gaussians.
+
+## CPU raster knobs (train step)
+
+Training uses the **CPU differentiable** rasterizer. Defaults: **batched**
+stencil, full-frame (`--cpu-tile-size 0`). Optional tiling
+(`--cpu-tile-size 64`) uses per-tile pixel clip (no double-count). Tune
+`--cpu-batch-size` / `--cpu-tile-size` / `--cpu-threads`.
+`--cpu-method loop` is debug-only.
 
 ## Drivers
 

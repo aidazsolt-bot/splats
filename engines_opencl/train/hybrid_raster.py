@@ -126,6 +126,7 @@ class HybridOpenCLRaster(torch.autograd.Function):
                 sh_degree=ctx.sh_degree,
                 max_gaussians=ctx.max_gaussians,
                 max_radius=ctx.max_radius,
+                method="batched",
             )
             gr = grad_rgb if grad_rgb is not None else torch.zeros_like(rgb)
             ga = grad_a if grad_a is not None else torch.zeros_like(alph)
@@ -182,6 +183,10 @@ def rasterize_hybrid(
     cl_rasterizer,
     max_gaussians: int = 25000,
     max_radius: int = 28,
+    batch_size: int = 64,
+    tile_size: int = 0,
+    method: str = "batched",
+    num_threads: int | None = None,
 ):
     """During training (params require grad) use CPU differentiable rasterizer.
 
@@ -207,6 +212,10 @@ def rasterize_hybrid(
             sh_degree=sh_degree,
             max_gaussians=max_gaussians,
             max_radius=max_radius,
+            batch_size=batch_size,
+            tile_size=tile_size,
+            method=method,
+            num_threads=num_threads,
         )
     return HybridOpenCLRaster.apply(
         means,

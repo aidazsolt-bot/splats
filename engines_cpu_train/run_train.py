@@ -35,6 +35,14 @@ def main() -> None:
         help="Short CPU verification (factor 8, few steps)",
     )
     ap.add_argument(
+        "--colab-smoke",
+        action="store_true",
+        help=(
+            "Match Colab notebook smoke: 500 steps, data-factor 4, knobs aligned "
+            "with engines_cuda --smoke --strategy default (SH0 active, densify@500)"
+        ),
+    )
+    ap.add_argument(
         "--hires",
         action="store_true",
         help="Full progressive schedule ending at data_factor=1 (native res)",
@@ -54,10 +62,40 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    # Optional TrainConfig overrides (Colab smoke alignment).
+    cfg_kw: dict = {}
+
+    if args.smoke and args.colab_smoke:
+        raise SystemExit("Use either --smoke or --colab-smoke, not both")
     if args.smoke:
         stages = [
             Stage(data_factor=8, steps=20, max_gaussians_draw=4000, max_radius=16, sh_degree=0),
         ]
+    elif args.colab_smoke:
+        # Colab: engines_cuda/run_train.py --smoke --data-factor 4 --strategy default
+        # -> max_steps=500, sh active=min(3, step//1000)=0, densify_start=500,
+        #    densify_every=100, scale_reg=0.01, alpha_lambda=0.1, no LPIPS.
+        stages = [
+            Stage(
+                data_factor=4,
+                steps=500,
+                max_gaussians_draw=50000,
+                max_radius=28,
+                sh_degree=0,
+            ),
+        ]
+        cfg_kw.update(
+            densify_every=500,  # first refine at step 500 (cuda densify_start)
+            densify_grad_thresh=0.0002,
+            densify_until_frac=1.0,
+            ssim_lambda=0.2,
+            alpha_lambda=0.1,
+            # CUDA Colab smoke has no LPIPS; on CPU we keep a light perceptual term
+            # when lpips/torchvision are installed (helps soft-sum raster quality).
+            lpips_lambda=0.05,
+            scale_reg=0.01,
+            sh_degree_max=3,
+        )
     elif args.hires:
         stages = [
             Stage(data_factor=8, steps=2000, max_gaussians_draw=12000, max_radius=20, sh_degree=0),
@@ -80,6 +118,7 @@ def main() -> None:
         device=args.device,
         resume=args.resume,
         ckpt_every=args.ckpt_every,
+        **cfg_kw,
     )
     out = train(cfg)
     print(f"Done. Results in {out}")
