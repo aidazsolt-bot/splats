@@ -255,7 +255,8 @@ def install_prebuilt_extension(runtime: Runtime) -> bool:
     return True
 
 
-# Snippet for the training venv: inject prebuilt as gsplat.csrc so _backend skips JIT.
+# Snippet for the training venv: inject prebuilt as gsplat.csrc BEFORE import gsplat.
+# Top-level `import gsplat` pulls cuda._wrapper -> _backend and would JIT otherwise.
 LOAD_PREBUILT_SNIPPET = r"""
 import os
 import sys
@@ -263,7 +264,7 @@ import time
 import resource
 from pathlib import Path
 
-import gsplat
+import torch  # noqa: F401
 from torch.utils.cpp_extension import _import_module_from_library
 
 started = time.perf_counter()
@@ -272,18 +273,26 @@ try:
     use_prebuilt = os.environ.get('GSPLAT_USE_PREBUILT') == '1'
     ext_dir = Path(os.environ['TORCH_EXTENSIONS_DIR']) / 'gsplat_cuda'
     so_path = ext_dir / 'gsplat_cuda.so'
-    if use_prebuilt and so_path.is_file():
-        print(f'Loading prebuilt {so_path} ...', flush=True)
-        mod = _import_module_from_library('gsplat_cuda', str(ext_dir), True)
-        sys.modules['gsplat.csrc'] = mod
-        gsplat.csrc = mod
+    if not (use_prebuilt and so_path.is_file()):
+        raise RuntimeError(
+            f'Prebuilt load expected but missing (GSPLAT_USE_PREBUILT={use_prebuilt!r}, so={so_path})'
+        )
+    print(f'Loading prebuilt {so_path} ...', flush=True)
+    mod = _import_module_from_library('gsplat_cuda', str(ext_dir), True)
+    # Must be registered before any `import gsplat` (which imports cuda._backend).
+    sys.modules['gsplat.csrc'] = mod
+    import gsplat
+    gsplat.csrc = mod
+    from gsplat.cuda import _backend as _backend_mod
     from gsplat.cuda._backend import _C
-    assert _C is not None, 'gsplat CUDA extension unavailable'
+    if _C is None or getattr(_backend_mod, '_C', None) is None:
+        raise RuntimeError('gsplat CUDA extension unavailable after prebuilt inject')
+    # If JIT still ran, _backend would have replaced _C via build_and_load; refuse that path.
+    if getattr(_C, '__file__', None) and 'torch_extensions' in str(getattr(_C, '__file__', '')):
+        pass  # loaded from our extension cache
     print('PASS: gsplat build/load', flush=True)
-    if use_prebuilt:
-        print('Mode: prebuilt Drive .so (no ninja compile)', flush=True)
-    else:
-        print('Mode: local JIT compile', flush=True)
+    print('Mode: prebuilt Drive .so (no ninja compile)', flush=True)
+    print(f'Extension module: {getattr(_C, "__file__", type(_C))}', flush=True)
 finally:
     print(f'Build/load elapsed: {time.perf_counter() - started:.1f} s', flush=True)
     print(f'Python peak RSS: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.1f} MiB', flush=True)
