@@ -169,14 +169,18 @@ print(json.dumps({
         ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-rgb3dgs-sm{actual['arch'].replace('.', '')}"
     )
     env.pop("GSPLAT_USE_PREBUILT", None)
+    runtime = Runtime(env)
+    # Re-attach prebuilt for 2c / train / any later cell (2b may have already copied it).
+    using_prebuilt = install_prebuilt_extension(runtime, quiet=True)
     print(
         f"Python {actual['python']} | torch {actual['torch']} | nvcc {NVCC_VERSION} | "
         f"gsplat {actual['gsplat']} ({GSPLAT_COMMIT[:8]})\n"
         f"GPU: {actual['gpu']} | arch {actual['arch']} | MAX_JOBS={MAX_JOBS}\n"
-        f"Extension cache: {env['TORCH_EXTENSIONS_DIR']}",
+        f"Extension cache: {runtime.env['TORCH_EXTENSIONS_DIR']}"
+        + (" | prebuilt=on" if using_prebuilt else " | prebuilt=off"),
         flush=True,
     )
-    return Runtime(env)
+    return runtime
 
 
 def _sha256_file(path: Path) -> str:
@@ -187,7 +191,51 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def install_prebuilt_extension(runtime: Runtime) -> bool:
+def _venv_site_packages() -> Path:
+    return VENV / "lib" / "python3.12" / "site-packages"
+
+
+def _install_prebuilt_site_hook() -> None:
+    """Make every venv Python inject gsplat.csrc before import gsplat can JIT."""
+    site = _venv_site_packages()
+    site.mkdir(parents=True, exist_ok=True)
+    hook = site / "gsplat_prebuilt_hook.py"
+    hook.write_text(
+        '''"""Auto-inject Drive/Mate prebuilt gsplat_cuda.so when GSPLAT_USE_PREBUILT=1."""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def _inject() -> None:
+    if os.environ.get("GSPLAT_USE_PREBUILT") != "1":
+        return
+    if "gsplat.csrc" in sys.modules:
+        return
+    root = os.environ.get("TORCH_EXTENSIONS_DIR")
+    if not root:
+        return
+    ext_dir = Path(root) / "gsplat_cuda"
+    so_path = ext_dir / "gsplat_cuda.so"
+    if not so_path.is_file():
+        return
+    import torch  # noqa: F401
+    from torch.utils.cpp_extension import _import_module_from_library
+
+    mod = _import_module_from_library("gsplat_cuda", str(ext_dir), True)
+    sys.modules["gsplat.csrc"] = mod
+
+
+_inject()
+''',
+        encoding="utf-8",
+    )
+    (site / "gsplat_prebuilt.pth").write_text("import gsplat_prebuilt_hook\n", encoding="utf-8")
+
+
+def install_prebuilt_extension(runtime: Runtime, *, quiet: bool = False) -> bool:
     """Copy the Drive prebuilt gsplat_cuda.so into the extension cache.
 
     Returns True when the file is ready for direct load (skips ninja compile).
@@ -196,21 +244,18 @@ def install_prebuilt_extension(runtime: Runtime) -> bool:
     """
     arch = runtime.env.get("TORCH_CUDA_ARCH_LIST", "")
     if arch != PREBUILT_ARCH:
-        print(
-            f"Prebuilt gsplat_cuda.so is sm_75 only (got arch {arch}); "
-            "falling back to local compile.",
-            flush=True,
-        )
+        if not quiet:
+            print(
+                f"Prebuilt gsplat_cuda.so is sm_75 only (got arch {arch}); "
+                "falling back to local compile.",
+                flush=True,
+            )
         return False
 
+    cache = ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-prebuilt-sm75"
+    dest_dir = cache / "gsplat_cuda"
+    dest = dest_dir / PREBUILT_SO_NAME
     drive_so = PREBUILT_DRIVE_DIR / PREBUILT_SO_NAME
-    if not drive_so.is_file():
-        print(
-            f"Prebuilt missing at {drive_so}. Mount Drive and ensure the file "
-            "is under blackberry-splats/gsplat-prebuilt/; falling back to compile.",
-            flush=True,
-        )
-        return False
 
     meta_path = PREBUILT_DRIVE_DIR / "META.json"
     expected = PREBUILT_SHA256
@@ -222,22 +267,29 @@ def install_prebuilt_extension(runtime: Runtime) -> bool:
         except json.JSONDecodeError:
             pass
 
-    digest = _sha256_file(drive_so)
-    if digest != expected:
-        raise RuntimeError(
-            f"Prebuilt SHA-256 mismatch for {drive_so}: got {digest}, expected {expected}"
-        )
-
-    cache = ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-prebuilt-sm75"
-    dest_dir = cache / "gsplat_cuda"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / PREBUILT_SO_NAME
-    if not dest.is_file() or dest.stat().st_size != drive_so.stat().st_size:
-        print(f"Copying prebuilt {drive_so} -> {dest} ...", flush=True)
-        shutil.copy2(drive_so, dest)
-    elif _sha256_file(dest) != expected:
-        print(f"Refreshing prebuilt cache {dest} ...", flush=True)
-        shutil.copy2(drive_so, dest)
+    if drive_so.is_file():
+        digest = _sha256_file(drive_so)
+        if digest != expected:
+            raise RuntimeError(
+                f"Prebuilt SHA-256 mismatch for {drive_so}: got {digest}, expected {expected}"
+            )
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        if not dest.is_file() or dest.stat().st_size != drive_so.stat().st_size:
+            if not quiet:
+                print(f"Copying prebuilt {drive_so} -> {dest} ...", flush=True)
+            shutil.copy2(drive_so, dest)
+        elif _sha256_file(dest) != expected:
+            if not quiet:
+                print(f"Refreshing prebuilt cache {dest} ...", flush=True)
+            shutil.copy2(drive_so, dest)
+    elif not (dest.is_file() and _sha256_file(dest) == expected):
+        if not quiet:
+            print(
+                f"Prebuilt missing at {drive_so} (and no valid local cache). "
+                "Mount Drive / run 2b first; falling back to compile.",
+                flush=True,
+            )
+        return False
 
     if _sha256_file(dest) != expected:
         raise RuntimeError(f"Cached prebuilt SHA-256 mismatch: {dest}")
@@ -247,11 +299,13 @@ def install_prebuilt_extension(runtime: Runtime) -> bool:
     # Avoid accidental restricted JIT if something still calls build_and_load.
     for key in ("BUILD_2DGS", "BUILD_3DGUT", "NUM_CHANNELS"):
         runtime.env.pop(key, None)
-    print(
-        f"PASS: prebuilt gsplat_cuda.so ready ({dest.stat().st_size} bytes, sm_75)\n"
-        f"Extension cache: {cache}",
-        flush=True,
-    )
+    _install_prebuilt_site_hook()
+    if not quiet:
+        print(
+            f"PASS: prebuilt gsplat_cuda.so ready ({dest.stat().st_size} bytes, sm_75)\n"
+            f"Extension cache: {cache}",
+            flush=True,
+        )
     return True
 
 
