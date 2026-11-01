@@ -26,7 +26,7 @@ _COMPAT_CUDA_CFLAGS = [
     "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
     "-Xcompiler=/Zc:preprocessor",
 ]
-# Huawei Mate MACH-WX9: CUDA Toolkit 12.1 accepts cl 19.38 (toolset 14.38).
+# Huawei Mate MACH-WX9: CUDA Toolkit 13.4 (and 12.1) accept cl 19.38 (toolset 14.38).
 # 14.44 is also installed; bare vcvars64.bat selects it and nvcc rejects the host compiler.
 _VCVARS_VER = "14.38"
 _CL_VERSION_MARK = "Version 19.38."

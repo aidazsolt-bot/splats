@@ -45,24 +45,28 @@ cameras.txt  images.txt  points3D.txt  images/*.png
 
 ### Google Colab
 
-Open [`colab/blackberry_train_colab.ipynb`](colab/blackberry_train_colab.ipynb) → Runtime **GPU** → mount Drive → smoke → MCMC train.  
-`OUT`: `MyDrive/blackberry-splats/cuda_out_mcmc/` · after disconnect: `RESUME = True`.
+Open [`colab/blackberry_train_colab.ipynb`](colab/blackberry_train_colab.ipynb) → Runtime **GPU** (prefer T4) → sections 1-2c → Drive → smoke → train.  
+On T4, 2b loads a Drive prebuilt `gsplat_cuda.so` (skips the long JIT).  
+Default `OUT`: `MyDrive/blackberry-splats/cuda_out_stable/` · after disconnect: `RESUME = True`.  
+Do **not** resume the diverged `cuda_out_mcmc` run.
 
 ### CUDA train (local laptop / lab)
 
-Pin: Torch **`cu121`** + CUDA Toolkit **12.1** + MSVC + `ninja`.
+Pin: Torch **`2.15.0+cu134`** + CUDA Toolkit **13.4** + gsplat **1.6.0** (`512d366`) + `ninja`.  
+Windows also needs MSVC toolset **14.38** (see [`WINDOWS_CUDA_SETUP.md`](WINDOWS_CUDA_SETUP.md)).
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.15.0 torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cu134
 pip install -r engines_cuda/requirements.txt
+BUILD_NO_CUDA=1 pip install --no-build-isolation \
+  "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 
-# Windows - MCMC / Postshot-like candidate
-python .\engines_cuda\run_train.py --resume `
+# Windows - stable recipe (or MCMC with low --noise-lr)
+python .\engines_cuda\run_train.py `
   --data X:\blackberry-splats\dataset `
-  --out cuda_out_mcmc `
-  --strategy mcmc --cap-max 200000 `
-  --max-steps 45000 --data-factor 1 --antialiased
+  --out cuda_out_stable `
+  --strategy default --max-steps 30000 --data-factor 2 --antialiased
 ```
 
 GTX 1650 (4 GB): OOM → `--data-factor 2` and/or lower `--cap-max`.
@@ -71,8 +75,8 @@ Mesh after train:
 
 ```bash
 python engines_cuda/export/mesh_from_ckpt.py \
-  --ckpt cuda_out_mcmc/ckpt_45000.pt \
-  --out cuda_out_mcmc/mesh_from_splat.ply
+  --ckpt cuda_out_stable/ckpt_30000.pt \
+  --out cuda_out_stable/mesh_from_splat.ply
 # optional: --backend pytorch3d --grid-size 128
 ```
 

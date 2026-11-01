@@ -1,5 +1,10 @@
 # Colab gsplat compilation investigation (2026-10-29)
 
+Historical snapshot. **Current default** (2026-11): PyTorch `2.15.0+cu134`,
+gsplat `1.6.0` @ `512d366`, Colab T4 prefers Drive prebuilt `gsplat_cuda.so`
+(see [`README.md`](README.md)). Pins below (`8c33ba2` / PR #1055 fork) are
+what this investigation used that day.
+
 ## Result
 
 The restricted gsplat 1.6.0 extension built and loaded successfully in

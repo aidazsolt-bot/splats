@@ -22,11 +22,15 @@ the C++ workload if it is missing.
 
 ## Activate MSVC in the training terminal
 
-This Huawei Mate build host (MACH-WX9, GeForce MX150, CUDA Toolkit 12.1) has
-MSVC **14.38.33130** and **14.44.35207** side by side. Toolkit 12.1 accepts
-`cl` 19.38. A bare `vcvars64.bat` or Developer PowerShell selects 14.44, and
-nvcc then rejects the host compiler. Pin **14.38** in the same terminal that
-trains. `engines_cuda/win_build_env.py` applies the same pin when training starts.
+This Huawei Mate build host (MACH-WX9, GeForce MX150) has MSVC **14.38.33130**
+and **14.44.35207** side by side. CUDA Toolkit **13.4** (and the older 12.1
+install) accepts `cl` 19.38 via toolset **14.38**. A bare `vcvars64.bat` or
+Developer PowerShell selects 14.44, and nvcc then rejects the host compiler.
+Pin **14.38** in the same terminal that trains. `engines_cuda/win_build_env.py`
+applies the same pin when training starts.
+
+Current default stack: PyTorch **2.15.0+cu134**, Toolkit **13.4.92**, gsplat
+**1.6.0** @ `512d366` (see [`engines_cuda/README.md`](engines_cuda/README.md)).
 
 ```powershell
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"

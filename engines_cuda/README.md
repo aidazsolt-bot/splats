@@ -20,26 +20,26 @@ Requires **NVIDIA CUDA**. This host without a GPU cannot run training; use a CUD
 On a GPU machine:
 
 ```bash
-python -m pip install torch --index-url https://download.pytorch.org/whl/cu134
+python -m pip install torch==2.15.0 torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cu134
 python -m pip install -r engines_cuda/requirements.txt
-BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
+BUILD_NO_CUDA=1 python -m pip install --no-build-isolation \
+  "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 python engines_cuda/run_train.py --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset"
 # Windows: --data X:\blackberry-splats\dataset --max-steps 30000
 ```
 
-The pinned gsplat source is the commit used by Colab,
-`kyo-zzz/gsplat@8c33ba2` (version 1.6.0; upstream PR #1055). It requires
-PyTorch 2.7 or newer. Choose the PyTorch CUDA wheel for the target runtime; the
-`cu134` command above is for the CUDA 13.4 workstation, not a universal Colab
-setting. `BUILD_NO_CUDA=1` defers extension compilation until the first gsplat
-CUDA call.
+The pinned gsplat source matches Colab: upstream
+`nerfstudio-project/gsplat@512d366` (version 1.6.0). It requires PyTorch 2.7 or
+newer. Use the `cu134` wheel with CUDA Toolkit 13.4. `BUILD_NO_CUDA=1` defers
+extension compilation until the first gsplat CUDA call (Colab T4 can skip that
+via a Drive prebuilt `.so`; see [`../colab/README.md`](../colab/README.md)).
 
 On Windows PowerShell, install the pinned gsplat source with:
 
 ```powershell
 $env:BUILD_NO_CUDA = "1"
-python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
+python.exe -m pip install --no-build-isolation "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 Remove-Item Env:BUILD_NO_CUDA
 ```
 
@@ -49,41 +49,34 @@ compiler optimization settings and leaves other gsplat modules enabled.
 
 ### Windows: gsplat CUDA extension build
 
-Previously tested setup (training ran to step 20000):
+**Current pin** (shared with Colab / Rocky Linux lab):
 
 | Component | Version |
 |--|--|
-| OS | Windows 11 Home, build 26200 |
-| GPU | NVIDIA GeForce GTX 1650, 4 GB (compute capability 7.5) |
-| NVIDIA driver | 621.01 (supports CUDA up to 13.5) |
-| CUDA Toolkit (`nvcc`) | 12.1 (V12.1.66) |
-| Visual Studio Build Tools | 2022, 17.14 |
-| MSVC toolset / `cl.exe` | 14.44.35207 / 19.44.35229 (x64) |
+| OS | Windows 11 Home |
+| GPU | NVIDIA GeForce GTX 1650, 4 GB (sm_75) |
+| CUDA Toolkit (`nvcc`) | 13.4.92 |
+| Visual Studio Build Tools | 2022 |
+| MSVC toolset / `cl.exe` | **14.38** / 19.38 (pin via `vcvars_ver=14.38`) |
 | Python | 3.12.15 (x64) |
-| PyTorch | 2.5.1+cu121 |
-| gsplat | 1.5.3 (CUDA extension JIT-compiled, ~5 min first run) |
+| PyTorch | 2.15.0+cu134 |
+| gsplat | 1.6.0 @ `512d366` (JIT; first build can take a long time on MSVC) |
 | Ninja | 1.13.2 |
-| NumPy / Pillow | 1.26.4 / 12.1.1 |
 
-This Huawei Mate build host (MACH-WX9, GeForce MX150 sm_61, CUDA Toolkit 12.1,
-driver 582.78) has MSVC 14.38.33130 and 14.44.35207 side by side.
 [win_build_env.py](win_build_env.py) calls `vcvars64.bat -vcvars_ver=14.38` so
-nvcc sees `cl` 19.38. The 14.44 row above records an older GTX 1650 test. The
-JIT patch still passes `-allow-unsupported-compiler` and
-`_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH` if the STL version check fires.
+nvcc sees `cl` 19.38 (bare Developer shells often pick 14.44, which Toolkit
+13.4 may reject). The trainer also adds `include\cccl` to the process-local
+MSVC `INCLUDE` path when present.
 
-Current CUDA 13.4 update on the same Windows host: Python 3.12,
-PyTorch 2.15.0+cu134, CUDA Toolkit 13.4.92, and gsplat 1.6.0. An earlier build
-with the upstream gsplat commit failed in `ProjectionUT3DGSFused.cu` because
-`std::isfinite` was host-only in `Cameras.cuh`. The Colab-pinned PR #1055 commit
-includes a host/device-aware fix for that issue and the Windows trainer now
-uses that same commit and reduced RGB build. On 2026-10-29, the extension built
-and loaded successfully on this Windows host with two compiler jobs after
-adding the CUDA `include\cccl` directory to the process-local MSVC `INCLUDE`
-path. A GPU RGB forward/backward smoke test passed with finite gradients for
-means, rotations, scales, opacities, and colors. Dataset training on the GTX 1650
-then reached step 18 with 38,288 initial Gaussians at data factor 1; loss fell
-from 0.2360 to 0.1403. Full-run completion remains unverified.
+**Older note (superseded):** a GTX 1650 host previously trained with CUDA
+Toolkit 12.1 + PyTorch 2.5.1+cu121 + gsplat 1.5.3 (~5 min first JIT). That is
+no longer the documented default.
+
+MSVC `std::isfinite` in device code (`Cameras.cuh`) remains a Windows-only
+compile risk on some gsplat revisions; Linux/GCC maps it to
+`__builtin_isfinite` and builds cleanly. Prefer matching the Colab commit
+`512d366` and the reduced RGB env (`BUILD_2DGS=0`, `BUILD_3DGUT=0`,
+`NUM_CHANNELS=3`) when iterating on Windows.
 
 If gsplat has no prebuilt CUDA extension, it compiles one on first use. This
 requires Ninja (included in `requirements.txt`), the CUDA toolkit (`nvcc`), and

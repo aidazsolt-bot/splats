@@ -25,9 +25,9 @@ and feature restrictions, see the [gsplat build report](GSPLAT_BUILD_REPORT.md).
 
 ## Pinned local-stack comparison
 
-The notebook uses the local CUDA 13.4 / PyTorch 2.15 comparison stack, not
-the older working CUDA 12.1 / gsplat 1.5.3 combination. gsplat matches
-`engines_cuda/requirements.txt` (upstream `main` tip `512d366`):
+The notebook uses the CUDA 13.4 / PyTorch 2.15 / gsplat 1.6.0 stack (same as
+`engines_cuda/requirements.txt`, upstream `main` tip `512d366`). An older
+CUDA 12.1 / gsplat 1.5.3 path is obsolete and no longer documented as default.
 
 | Component | Notebook pin |
 |-----------|--------------|
@@ -55,13 +55,12 @@ gsplat is installed from `nerfstudio-project/gsplat` at the full 40-character
 commit above. Compiler packages are pinned separately so installing nvcc
 13.4.92 does not override PyTorch's CUDA runtime requirements.
 
-The build is restricted to this notebook's RGB 3DGS training path:
-`BUILD_2DGS=0`, `BUILD_3DGUT=0`, and `NUM_CHANNELS=3`. This skips unused
-2DGS/3DGUT kernels and non-RGB channel specializations; it does not change
-compiler optimization settings. Adam, relocation (including MCMC), and loss
-modules remain enabled. Other render modes requiring non-RGB channels are
-not supported by this build. Its separate `rgb3dgs` cache does not overwrite
-or reuse the previous full-build cache.
+**T4 / sm_75:** section 2b prefers the Drive prebuilt full `gsplat_cuda.so`
+(under `MyDrive/blackberry-splats/gsplat-prebuilt/...-sm75/`) and injects it
+before `import gsplat`, so training skips ninja. **Other GPUs:** fall back to a
+restricted RGB JIT (`BUILD_2DGS=0`, `BUILD_3DGUT=0`, `NUM_CHANNELS=3`) with a
+separate `rgb3dgs` cache. Adam, relocation (including MCMC), and loss modules
+remain enabled in both paths.
 
 Every diagnostic and training cell imports its dependencies and reloads the
 runtime helper independently. The helper validates the interpreter/packages and
@@ -91,12 +90,10 @@ visible failure instead of falling back to another CUDA version.
 ### Reading the comparison
 
 - **2a fails:** the problem occurs before gsplat (environment/driver/PyTorch).
-- **2b fails:** retain the final compiler error. This phase builds on the CPU;
-  verbose Ninja output plus Python's standard-library `time`/`resource`
-  reporting show elapsed time, Python peak RSS and the largest reaped child
-  peak RSS, even on normal build exceptions (not after an OOM kill). These are not combined
-  process-tree memory measurements; no external `time` executable is needed.
-  A cache hit on rerun is not a cold-build measurement.
+- **2b fails:** on T4, check Drive prebuilt path / SHA; on other GPUs retain the
+  final compiler error. JIT builds on the CPU; verbose Ninja plus
+  `time`/`resource` reporting show elapsed time and peak RSS (not after an OOM
+  kill). A cache hit on rerun is not a cold-build measurement.
 - **2c fails:** the extension built, but its tiny forward/backward GPU test
   failed.
 - **2c passes, training fails:** investigate the dataset, training settings and
@@ -125,10 +122,9 @@ python .\engines_cuda\run_train.py --resume `
 
 CUDA Toolkit matching the PyTorch CUDA runtime + MSVC + Ninja: see
 [`../WINDOWS_CUDA_SETUP.md`](../WINDOWS_CUDA_SETUP.md).
-The shared trainer requires PyTorch >=2.7. For this comparison, the notebook
-uses the same gsplat commit `512d366` as `engines_cuda/requirements.txt`.
-`BUILD_NO_CUDA=1` defers compilation to the explicit build diagnostic, with
-ten parallel compiler jobs.
+The shared trainer requires PyTorch >=2.7. The notebook uses gsplat commit
+`512d366` (same as `engines_cuda`). `BUILD_NO_CUDA=1` defers compilation until
+2b; on T4 the prebuilt `.so` replaces that JIT.
 
 ## Train recipe
 

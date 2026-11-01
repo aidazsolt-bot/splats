@@ -4,10 +4,12 @@
 #
 #   python -m pip install torch==2.15.0 torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cu134
 #   python -m pip install -r engines_cuda/requirements.txt
-#   BUILD_NO_CUDA=1 python -m pip install --no-build-isolation "gsplat @ git+https://github.com/kyo-zzz/gsplat.git@8c33ba2aa4b1283376b679af397ee373d1f4c80e"
+#   BUILD_NO_CUDA=1 python -m pip install --no-build-isolation \
+#     "gsplat @ git+https://github.com/nerfstudio-project/gsplat.git@512d366b67073d77ca099ede742683c165dfc23b"
 #   python -m pip install --no-build-isolation -r engines_cuda/requirements-pytorch3d.txt
 #
-# gsplat 1.6.0 is not on PyPI yet; install from the git pin above (same commit as main).
+# gsplat 1.6.0: install from the git pin above (upstream main tip used by Colab).
+
 # pytorch3d is separate: its setup imports torch, so pip build isolation fails
 # unless torch is already installed and --no-build-isolation is used.
 
