@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -22,6 +24,16 @@ CCCL_VERSION = "13.3.4.3.1"
 GSPLAT_COMMIT = "512d366b67073d77ca099ede742683c165dfc23b"
 NINJA_VERSION = "1.13.2"
 MAX_JOBS = 10
+
+# Prebuilt full JIT (sm_75 / T4), uploaded from the Mate Linux host.
+# Direct-load only: do not drop into ninja and expect a no-op rebuild.
+PREBUILT_DRIVE_DIR = (
+    ROOT / "drive/MyDrive/blackberry-splats/gsplat-prebuilt"
+    / "py312-torch215-cu134-512d366-sm75"
+)
+PREBUILT_SO_NAME = "gsplat_cuda.so"
+PREBUILT_ARCH = "7.5"
+PREBUILT_SHA256 = "2efd223259d15bc627acbf16c2f7cfc96a8d42a96aafb516fbf198a080b7b9fc"
 
 
 def run_live(args: list[str], *, env: dict[str, str] | None = None) -> None:
@@ -156,6 +168,7 @@ print(json.dumps({
     env["TORCH_EXTENSIONS_DIR"] = str(
         ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-rgb3dgs-sm{actual['arch'].replace('.', '')}"
     )
+    env.pop("GSPLAT_USE_PREBUILT", None)
     print(
         f"Python {actual['python']} | torch {actual['torch']} | nvcc {NVCC_VERSION} | "
         f"gsplat {actual['gsplat']} ({GSPLAT_COMMIT[:8]})\n"
@@ -164,6 +177,118 @@ print(json.dumps({
         flush=True,
     )
     return Runtime(env)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def install_prebuilt_extension(runtime: Runtime) -> bool:
+    """Copy the Drive prebuilt gsplat_cuda.so into the extension cache.
+
+    Returns True when the file is ready for direct load (skips ninja compile).
+    Only for compute capability 7.5 (T4 / GTX 1650 class). Returns False so the
+    caller can fall back to a local restricted JIT build.
+    """
+    arch = runtime.env.get("TORCH_CUDA_ARCH_LIST", "")
+    if arch != PREBUILT_ARCH:
+        print(
+            f"Prebuilt gsplat_cuda.so is sm_75 only (got arch {arch}); "
+            "falling back to local compile.",
+            flush=True,
+        )
+        return False
+
+    drive_so = PREBUILT_DRIVE_DIR / PREBUILT_SO_NAME
+    if not drive_so.is_file():
+        print(
+            f"Prebuilt missing at {drive_so}. Mount Drive and ensure the file "
+            "is under blackberry-splats/gsplat-prebuilt/; falling back to compile.",
+            flush=True,
+        )
+        return False
+
+    meta_path = PREBUILT_DRIVE_DIR / "META.json"
+    expected = PREBUILT_SHA256
+    if meta_path.is_file():
+        try:
+            expected = json.loads(meta_path.read_text(encoding="utf-8")).get(
+                "sha256", expected
+            )
+        except json.JSONDecodeError:
+            pass
+
+    digest = _sha256_file(drive_so)
+    if digest != expected:
+        raise RuntimeError(
+            f"Prebuilt SHA-256 mismatch for {drive_so}: got {digest}, expected {expected}"
+        )
+
+    cache = ROOT / "torch_extensions" / f"cu134-{GSPLAT_COMMIT}-prebuilt-sm75"
+    dest_dir = cache / "gsplat_cuda"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / PREBUILT_SO_NAME
+    if not dest.is_file() or dest.stat().st_size != drive_so.stat().st_size:
+        print(f"Copying prebuilt {drive_so} -> {dest} ...", flush=True)
+        shutil.copy2(drive_so, dest)
+    elif _sha256_file(dest) != expected:
+        print(f"Refreshing prebuilt cache {dest} ...", flush=True)
+        shutil.copy2(drive_so, dest)
+
+    if _sha256_file(dest) != expected:
+        raise RuntimeError(f"Cached prebuilt SHA-256 mismatch: {dest}")
+
+    runtime.env["TORCH_EXTENSIONS_DIR"] = str(cache)
+    runtime.env["GSPLAT_USE_PREBUILT"] = "1"
+    # Avoid accidental restricted JIT if something still calls build_and_load.
+    for key in ("BUILD_2DGS", "BUILD_3DGUT", "NUM_CHANNELS"):
+        runtime.env.pop(key, None)
+    print(
+        f"PASS: prebuilt gsplat_cuda.so ready ({dest.stat().st_size} bytes, sm_75)\n"
+        f"Extension cache: {cache}",
+        flush=True,
+    )
+    return True
+
+
+# Snippet for the training venv: inject prebuilt as gsplat.csrc so _backend skips JIT.
+LOAD_PREBUILT_SNIPPET = r"""
+import os
+import sys
+import time
+import resource
+from pathlib import Path
+
+import gsplat
+from torch.utils.cpp_extension import _import_module_from_library
+
+started = time.perf_counter()
+print('Starting gsplat load...', flush=True)
+try:
+    use_prebuilt = os.environ.get('GSPLAT_USE_PREBUILT') == '1'
+    ext_dir = Path(os.environ['TORCH_EXTENSIONS_DIR']) / 'gsplat_cuda'
+    so_path = ext_dir / 'gsplat_cuda.so'
+    if use_prebuilt and so_path.is_file():
+        print(f'Loading prebuilt {so_path} ...', flush=True)
+        mod = _import_module_from_library('gsplat_cuda', str(ext_dir), True)
+        sys.modules['gsplat.csrc'] = mod
+        gsplat.csrc = mod
+    from gsplat.cuda._backend import _C
+    assert _C is not None, 'gsplat CUDA extension unavailable'
+    print('PASS: gsplat build/load', flush=True)
+    if use_prebuilt:
+        print('Mode: prebuilt Drive .so (no ninja compile)', flush=True)
+    else:
+        print('Mode: local JIT compile', flush=True)
+finally:
+    print(f'Build/load elapsed: {time.perf_counter() - started:.1f} s', flush=True)
+    print(f'Python peak RSS: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.1f} MiB', flush=True)
+    print(f'Largest reaped child peak RSS: {resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024:.1f} MiB (not combined process-tree memory)', flush=True)
+"""
 
 
 def install() -> None:

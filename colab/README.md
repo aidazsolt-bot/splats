@@ -13,8 +13,11 @@ Branch: **`feature/colab-train` only**.
 
 1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) (GitHub → Open in Colab).
 2. Start a fresh **GPU** runtime; prefer T4 for the local comparison.
-3. Run sections 1-2c: install, verify versions/basic CUDA, build gsplat, test forward/backward.
-4. Only after these pass: mount Drive, smoke, then full training.
+3. Run sections 1-2c: install, verify versions/basic CUDA, load gsplat, test forward/backward.
+   On T4, 2b mounts Drive and loads the prebuilt `gsplat_cuda.so` under
+   `MyDrive/blackberry-splats/gsplat-prebuilt/py312-torch215-cu134-512d366-sm75/`
+   (skips the long compile). Other GPUs still JIT the restricted RGB-3DGS set.
+4. Section 3 remounts Drive for dataset/output paths; then smoke and full training.
 5. Keep `ckpt_latest.pt` on Drive; set `RESUME = True` after disconnect.
 
 For the failure history, verified five-minute build result, upstream references,
