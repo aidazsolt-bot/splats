@@ -14,7 +14,7 @@ git checkout feature/colab-train && git pull
 
 | Path | What |
 |------|------|
-| [`engines_cuda/`](engines_cuda/) | Photoreal 3DGS train (PyTorch + **gsplat**, NVIDIA CUDA) |
+| [`engines_cuda/`](engines_cuda/) | Photoreal 3DGS / **2DGS** train (PyTorch + **gsplat**, NVIDIA CUDA) |
 | [`colab/`](colab/) | Same trainer as a Colab notebook |
 | [`engines_cuda/export/mesh_from_ckpt.py`](engines_cuda/export/mesh_from_ckpt.py) | Mesh from trained Gaussians (Open3D Poisson or PyTorch3D cubify) |
 | [`engines/`](engines/) | CPU deterministic splat + mesh (no training) |
@@ -67,6 +67,12 @@ python .\engines_cuda\run_train.py `
   --data X:\blackberry-splats\dataset `
   --out cuda_out_stable `
   --strategy default --max-steps 30000 --data-factor 2 --antialiased
+
+# 2DGS / surfel (surface-oriented; no --antialiased)
+python .\engines_cuda\run_train.py `
+  --data X:\blackberry-splats\dataset `
+  --out cuda_out_2dgs `
+  --2dgs --strategy default --max-steps 30000 --data-factor 2
 ```
 
 GTX 1650 (4 GB): OOM → `--data-factor 2` and/or lower `--cap-max`.

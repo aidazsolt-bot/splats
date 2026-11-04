@@ -57,3 +57,24 @@ def alpha_bce(pred_alpha: torch.Tensor, gt_alpha: torch.Tensor) -> torch.Tensor:
     p = pred_alpha.clamp(eps, 1 - eps)
     g = gt_alpha.clamp(0, 1)
     return F.binary_cross_entropy(p, g)
+
+
+def normal_consistency(
+    render_normals: torch.Tensor,
+    surf_normals: torch.Tensor,
+    alphas: torch.Tensor,
+) -> torch.Tensor:
+    """2DGS normal consistency: 1 - cos(render_n, depth_n), weighted by alpha.
+
+    render_normals / surf_normals: B H W 3 (or H W 3); alphas: B H W (or H W).
+    """
+    rn = render_normals
+    sn = surf_normals
+    a = alphas
+    if rn.dim() == 3:
+        rn = rn.unsqueeze(0)
+        sn = sn.unsqueeze(0)
+        a = a.unsqueeze(0)
+    # Match gsplat simple_trainer_2dgs: detach alpha mask onto surface normals.
+    sn = sn * a.detach().unsqueeze(-1)
+    return (1.0 - (rn * sn).sum(dim=-1)).mean()

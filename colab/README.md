@@ -11,7 +11,10 @@ Branch: **`feature/colab-train` only**.
 
 ## Quick start (Colab)
 
-1. Open [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) (GitHub → Open in Colab).
+1. Open a notebook (GitHub → Open in Colab):
+   - [`blackberry_train_colab.ipynb`](blackberry_train_colab.ipynb) - **3DGS** (default / stable)
+   - [`blackberry_train_2dgs_colab.ipynb`](blackberry_train_2dgs_colab.ipynb) - **2DGS / surfel**
+     (`--2dgs`, same berries dataset, OUT `cuda_out_2dgs`)
 2. Start a fresh **GPU** runtime; prefer T4 for the local comparison.
 3. Run sections 1-2c: install, verify versions/basic CUDA, load gsplat, test forward/backward.
    On T4, 2b mounts Drive and loads the prebuilt `gsplat_cuda.so` under

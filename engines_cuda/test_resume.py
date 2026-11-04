@@ -63,6 +63,27 @@ def strategy_rasterize(model, viewmat, K, width, height, *args, **kwargs):
     return colors, alphas, info
 
 
+def strategy_rasterize_2dgs(model, viewmat, K, width, height, *args, **kwargs):
+    n = model.means.shape[0]
+    grad = model.means[:, :2].unsqueeze(0).clone().requires_grad_(True)
+    value = torch.sigmoid(grad.mean() + model.opacities.mean())
+    colors = value.expand(1, height, width, 3)
+    alphas = value.expand(1, height, width)
+    normals = torch.zeros(1, height, width, 3)
+    normals[..., 2] = 1.0
+    distort = value.expand(1, height, width, 1)
+    info = {
+        "gradient_2dgs": grad,
+        "means2d": grad,
+        "radii": torch.ones(1, n, 2),
+        "gaussian_ids": torch.arange(n),
+        "width": width,
+        "height": height,
+        "n_cameras": 1,
+    }
+    return colors, alphas, normals, normals.clone(), distort, info
+
+
 def make_init(n):
     return SimpleNamespace(
         means=torch.ones(n, 3), scales=torch.zeros(n, 3),
@@ -88,6 +109,15 @@ class CudaResumeTests(unittest.TestCase):
         self.assertEqual(mcmc.refine_stop, 25000)
         self.assertEqual(mcmc.cap_max, 200000)
         self.assertEqual(mcmc.opacity_reg, 0.01)
+
+        with self.assertRaisesRegex(ValueError, "antialiased"):
+            bad = trainer.TrainConfig(
+                data="data", out="out", use_2dgs=True, antialiased=True
+            )
+            trainer._normalize_strategy_config(bad, None)
+        with self.assertRaisesRegex(ValueError, "require --2dgs"):
+            bad = trainer.TrainConfig(data="data", out="out", normal_loss=True)
+            trainer._normalize_strategy_config(bad, None)
 
     def test_restores_parameters_optimizer_and_next_step(self):
         with tempfile.TemporaryDirectory(dir=ROOT.parent) as tmp:
@@ -200,6 +230,38 @@ class CudaResumeTests(unittest.TestCase):
             self.assertGreater(saved["means"].shape[0], 20)
             self.assertLessEqual(saved["means"].shape[0], 22)
             self.assertEqual(saved["strategy_state"]["binoms"].device.type, "cpu")
+
+    def test_2dgs_uses_surfel_raster_and_persists_flag(self):
+        with tempfile.TemporaryDirectory(dir=ROOT.parent) as tmp:
+            cfg = trainer.TrainConfig(
+                data=tmp, out=tmp, max_steps=2, save_steps=(2,), sh_degree=1,
+                densify=False, random_bkgd=False, eval_every=0, ckpt_every=0,
+                strategy="legacy", use_2dgs=True,
+                normal_loss=True, normal_start_iter=0,
+                dist_loss=True, dist_start_iter=0,
+            )
+            fake_gsplat = SimpleNamespace()
+            # Drop any half-imported real gsplat from earlier tests on GPU-less hosts.
+            stale = [name for name in list(sys.modules) if name == "gsplat" or name.startswith("gsplat.")]
+            for name in stale:
+                sys.modules.pop(name, None)
+            with (
+                patch.object(trainer, "_require_cuda", return_value=torch.device("cpu")),
+                patch.dict(sys.modules, {"gsplat": fake_gsplat}),
+                patch.object(trainer, "ColmapRGBADataset", TinyDataset),
+                patch.object(trainer, "init_gaussians_from_points3d", return_value=make_init(2)),
+                patch.object(trainer, "_rasterize_2dgs", side_effect=strategy_rasterize_2dgs) as render2d,
+                patch.object(trainer, "_rasterize") as render3d,
+                patch("builtins.print"),
+            ):
+                trainer.train(cfg)
+            self.assertEqual(render2d.call_count, 2)
+            render3d.assert_not_called()
+            self.assertTrue(render2d.call_args.kwargs.get("distloss"))
+            saved = load_checkpoint(Path(tmp) / "ckpt_latest.pt")
+            self.assertTrue(saved["cfg"]["use_2dgs"])
+            self.assertTrue(saved["cfg"]["normal_loss"])
+            self.assertTrue(saved["cfg"]["dist_loss"])
 
     def test_default_strategy_state_is_restored_on_resume(self):
         with tempfile.TemporaryDirectory(dir=ROOT.parent) as tmp:

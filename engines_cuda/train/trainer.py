@@ -1,4 +1,4 @@
-"""CUDA 3D Gaussian Splatting trainer (gsplat + torch) with alpha-aware loss."""
+"""CUDA 3D/2D Gaussian Splatting trainer (gsplat + torch) with alpha-aware loss."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -21,7 +21,7 @@ if str(_ROOT) not in sys.path:
 
 from dataset.colmap_rgba import ColmapRGBADataset, init_gaussians_from_points3d  # noqa: E402
 from export.ply import export_gsplat_ply  # noqa: E402
-from train.losses import alpha_bce, l1_masked, ssim_loss  # noqa: E402
+from train.losses import alpha_bce, l1_masked, normal_consistency, ssim_loss  # noqa: E402
 
 _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO) not in sys.path:
@@ -51,6 +51,13 @@ CUDA_RESUME_KEYS = (
     "scale_reg",
     "antialiased",
     "strategy",
+    "use_2dgs",
+    "normal_loss",
+    "normal_lambda",
+    "normal_start_iter",
+    "dist_loss",
+    "dist_lambda",
+    "dist_start_iter",
 )
 
 
@@ -108,6 +115,14 @@ class TrainConfig:
     cap_max: Optional[int] = None
     noise_lr: Optional[float] = None
     antialiased: bool = False
+    # 2DGS / surfel rasterization (gsplat.rasterization_2dgs)
+    use_2dgs: bool = False
+    normal_loss: bool = False
+    normal_lambda: float = 5e-2
+    normal_start_iter: int = 7000
+    dist_loss: bool = False
+    dist_lambda: float = 1e-2
+    dist_start_iter: int = 3000
 
 
 def _normalize_strategy_config(cfg: TrainConfig, saved_cfg: Optional[dict]) -> None:
@@ -143,6 +158,10 @@ def _normalize_strategy_config(cfg: TrainConfig, saved_cfg: Optional[dict]) -> N
         cfg.noise_lr = 5e5
     if cfg.strategy != "default" and (cfg.absgrad or cfg.revised_opacity):
         raise ValueError("--absgrad and --revised-opacity require --strategy default")
+    if cfg.use_2dgs and cfg.antialiased:
+        raise ValueError("--antialiased is not supported with --2dgs")
+    if (cfg.normal_loss or cfg.dist_loss) and not cfg.use_2dgs:
+        raise ValueError("--normal-loss / --dist-loss require --2dgs")
 
 
 def _strategy_resume_keys(strategy: str) -> tuple:
@@ -281,6 +300,70 @@ def _rasterize(
     )
     # render_colors: B H W C, render_alphas: B H W 1
     return render_colors, render_alphas.squeeze(-1), info
+
+
+def _rasterize_2dgs(
+    model: GaussianModel,
+    viewmats,
+    Ks,
+    width,
+    height,
+    sh_degree_active,
+    near,
+    far,
+    absgrad: bool = False,
+    distloss: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    """Surfel (2DGS) rasterization via gsplat.rasterization_2dgs.
+
+    Returns colors (B H W 3+), alphas (B H W), render_normals, surf_normals,
+    render_distort, info. Depth channel is stripped from colors when present.
+    """
+    from gsplat.rendering import rasterization_2dgs
+
+    means = model.means
+    # rasterization_2dgs normalizes quats internally; keep consistent with 3D path
+    quats = model.quats
+    scales = torch.exp(model.scales)
+    opacities = torch.sigmoid(model.opacities)
+    colors = model.colors_sh(sh_degree_active)
+
+    (
+        render_colors,
+        render_alphas,
+        render_normals,
+        surf_normals,
+        render_distort,
+        _render_median,
+        info,
+    ) = rasterization_2dgs(
+        means=means,
+        quats=quats,
+        scales=scales,
+        opacities=opacities,
+        colors=colors,
+        viewmats=viewmats,
+        Ks=Ks,
+        width=width,
+        height=height,
+        near_plane=near,
+        far_plane=far,
+        sh_degree=sh_degree_active,
+        # RGB+ED: expected depth for surface normals from depth gradients
+        render_mode="RGB+ED",
+        packed=False,
+        absgrad=absgrad,
+        distloss=distloss,
+    )
+    rgb = render_colors[..., :3]
+    return (
+        rgb,
+        render_alphas.squeeze(-1),
+        render_normals,
+        surf_normals,
+        render_distort,
+        info,
+    )
 
 
 @torch.no_grad()
@@ -494,6 +577,13 @@ def train(cfg: TrainConfig) -> Path:
         if not saved_cfg.get("strategy"):
             saved_cfg["strategy"] = "legacy"
         saved_cfg.setdefault("antialiased", False)
+        saved_cfg.setdefault("use_2dgs", False)
+        saved_cfg.setdefault("normal_loss", False)
+        saved_cfg.setdefault("normal_lambda", 5e-2)
+        saved_cfg.setdefault("normal_start_iter", 7000)
+        saved_cfg.setdefault("dist_loss", False)
+        saved_cfg.setdefault("dist_lambda", 1e-2)
+        saved_cfg.setdefault("dist_start_iter", 3000)
         if saved_cfg.get("opacity_reg") is None:
             saved_cfg["opacity_reg"] = 0.0
         if saved_cfg.get("scale_reg") is None:
@@ -549,6 +639,7 @@ def train(cfg: TrainConfig) -> Path:
                 absgrad=cfg.absgrad,
                 revised_opacity=cfg.revised_opacity,
                 verbose=True,
+                key_for_gradient="gradient_2dgs" if cfg.use_2dgs else "means2d",
             )
         else:
             strategy_impl = MCMCStrategy(
@@ -590,10 +681,12 @@ def train(cfg: TrainConfig) -> Path:
     t0 = time.time()
     last_log = time.monotonic()
     step = start_step
+    raster_label = "2dgs" if cfg.use_2dgs else ("antialiased" if cfg.antialiased else "3dgs")
     print(
         f"Train start: views={len(train_ds)} test={len(test_ds)} "
         f"init_gauss={model.means.shape[0]} factor={cfg.data_factor} "
-        f"steps={start_step + 1}..{cfg.max_steps} strategy={cfg.strategy}",
+        f"steps={start_step + 1}..{cfg.max_steps} strategy={cfg.strategy} "
+        f"raster={raster_label}",
         flush=True,
     )
 
@@ -625,11 +718,29 @@ def train(cfg: TrainConfig) -> Path:
                     "compiled on the CPU before GPU work starts...",
                     flush=True,
                 )
-            colors, alphas, info = _rasterize(
-                model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
-                absgrad=cfg.strategy == "default" and cfg.absgrad,
-                rasterize_mode="antialiased" if cfg.antialiased else "classic",
-            )
+            use_absgrad = cfg.strategy == "default" and cfg.absgrad
+            render_normals = None
+            surf_normals = None
+            render_distort = None
+            if cfg.use_2dgs:
+                (
+                    colors,
+                    alphas,
+                    render_normals,
+                    surf_normals,
+                    render_distort,
+                    info,
+                ) = _rasterize_2dgs(
+                    model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+                    absgrad=use_absgrad,
+                    distloss=cfg.dist_loss,
+                )
+            else:
+                colors, alphas, info = _rasterize(
+                    model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+                    absgrad=use_absgrad,
+                    rasterize_mode="antialiased" if cfg.antialiased else "classic",
+                )
             if step == start_step + 1:
                 print("[startup] Rasterization returned; computing loss and gradients...", flush=True)
 
@@ -648,6 +759,14 @@ def train(cfg: TrainConfig) -> Path:
             loss_a = alpha_bce(alphas, alpha)
             loss = (1.0 - cfg.ssim_lambda) * loss_l1 + cfg.ssim_lambda * loss_ssim
             loss = loss + cfg.alpha_lambda * loss_a
+            loss_n = None
+            loss_d = None
+            if cfg.use_2dgs and cfg.normal_loss and step > cfg.normal_start_iter:
+                loss_n = normal_consistency(render_normals, surf_normals, alphas)
+                loss = loss + cfg.normal_lambda * loss_n
+            if cfg.use_2dgs and cfg.dist_loss and step > cfg.dist_start_iter:
+                loss_d = render_distort.mean()
+                loss = loss + cfg.dist_lambda * loss_d
             if cfg.opacity_reg > 0:
                 loss = loss + cfg.opacity_reg * torch.sigmoid(model.opacities).mean()
             if cfg.scale_reg > 0:
@@ -714,10 +833,15 @@ def train(cfg: TrainConfig) -> Path:
                 or time.monotonic() - last_log >= 10.0
             ):
                 elapsed = time.time() - t0
+                extra = ""
+                if loss_n is not None:
+                    extra += f" nrm={loss_n.item():.4f}"
+                if loss_d is not None:
+                    extra += f" dist={loss_d.item():.4f}"
                 print(
                     f"step={step}/{cfg.max_steps} loss={loss.item():.4f} "
                     f"l1={loss_l1.item():.4f} ssim={loss_ssim.item():.4f} "
-                    f"alpha={loss_a.item():.4f} n={model.means.shape[0]} "
+                    f"alpha={loss_a.item():.4f}{extra} n={model.means.shape[0]} "
                     f"sh={active_sh} ({elapsed:.1f}s)",
                     flush=True,
                 )
@@ -762,10 +886,15 @@ def _eval_psnr(model, test_ds, device, cfg: TrainConfig, active_sh: int) -> None
         viewmat = sample["viewmat"][None].to(device)
         h = int(sample["height"])
         w = int(sample["width"])
-        colors, alphas, _ = _rasterize(
-            model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
-            rasterize_mode="antialiased" if cfg.antialiased else "classic",
-        )
+        if cfg.use_2dgs:
+            colors, alphas, *_rest = _rasterize_2dgs(
+                model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+            )
+        else:
+            colors, alphas, _ = _rasterize(
+                model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
+                rasterize_mode="antialiased" if cfg.antialiased else "classic",
+            )
         bkgd = torch.zeros(1, 1, 1, 3, device=device)
         gt = image * alpha[..., None] + bkgd * (1.0 - alpha[..., None])
         pred = colors[..., :3] * alphas[..., None] + bkgd * (1.0 - alphas[..., None])

@@ -1,4 +1,4 @@
-# engines_cuda - photorealistic 3DGS training (PyTorch + gsplat)
+# engines_cuda - photorealistic 3DGS / 2DGS training (PyTorch + gsplat)
 
 **Windows `cl.exe` / Ninja setup:** [install and activate the build tools](../WINDOWS_CUDA_SETUP.md).
 
@@ -193,9 +193,36 @@ Available strategies:
   behavior.
 
 `--opacity-reg` defaults to 0.01 for MCMC and 0 otherwise; `--scale-reg`
-defaults to 0.01. `--antialiased` enables gsplat antialiased rasterization.
-`--no-densify` disables all strategy refinement (including MCMC relocation and
-noise). Strategy configuration and refinement state are checkpointed.
+defaults to 0.01. `--antialiased` enables gsplat antialiased rasterization
+(3DGS only). `--no-densify` disables all strategy refinement (including MCMC
+relocation and noise). Strategy configuration and refinement state are
+checkpointed.
+
+### 2DGS / surfel training
+
+Surface-oriented **2D Gaussian Splatting** via gsplat `rasterization_2dgs`
+(same family as [hbb1/2d-gaussian-splatting](https://github.com/hbb1/2d-gaussian-splatting)).
+Disks replace ellipsoids; normal consistency + distortion losses encourage a
+coherent surface (helpful before mesh extract).
+
+```bash
+python engines_cuda/run_train.py \
+  --data "/usr/src/TestAdnroidNDKSDK/blackberry-splats/dataset" \
+  --out "/usr/src/TestAdnroidNDKSDK/blackberry-splats/engines_cuda_out_2dgs" \
+  --2dgs --strategy default --data-factor 2 --max-steps 30000
+# optional: --prune-opa 0.05  (gsplat 2DGS example default)
+# smoke: --smoke --2dgs
+```
+
+- `--2dgs` switches the rasterizer; incompatible with `--antialiased`.
+- Normal / distortion losses default **on** with `--2dgs`
+  (`--no-normal-loss` / `--no-dist-loss` to disable).
+- Weights / schedules: `--normal-lambda` (0.05), `--normal-start-iter` (7000),
+  `--dist-lambda` (0.01), `--dist-start-iter` (3000). Smoke pulls start iters
+  into the short run automatically.
+- `DefaultStrategy` densifies on `gradient_2dgs` (not `means2d`).
+- Official TSDF mesh extract from 2DGS renders is still roadmap; current
+  `export/mesh_from_ckpt.py` (Open3D Poisson) still works on the PLY/ckpt.
 
 Resuming a pre-strategy checkpoint with no `--strategy` flag automatically
 selects `legacy`. New checkpoints require the same strategy and its relevant

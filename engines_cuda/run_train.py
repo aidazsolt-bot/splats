@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train photorealistic 3D Gaussians with gsplat + PyTorch CUDA."""
+"""Train photorealistic 3D/2D Gaussians with gsplat + PyTorch CUDA."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from train.trainer import TrainConfig, train  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="CUDA/Torch 3DGS trainer (alpha-masked, COLMAP RGBA)"
+        description="CUDA/Torch 3DGS/2DGS trainer (alpha-masked, COLMAP RGBA)"
     )
     ap.add_argument(
         "--data",
@@ -90,7 +90,50 @@ def main() -> None:
     ap.add_argument(
         "--antialiased",
         action="store_true",
-        help="Use gsplat's antialiased rasterization mode",
+        help="Use gsplat's antialiased rasterization mode (3DGS only; incompatible with --2dgs)",
+    )
+    ap.add_argument(
+        "--2dgs",
+        dest="use_2dgs",
+        action="store_true",
+        help="Train 2DGS surfels via gsplat.rasterization_2dgs (surface-oriented; "
+        "enables normal/dist losses by default)",
+    )
+    ap.add_argument(
+        "--normal-loss",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="2DGS normal consistency loss (default: on with --2dgs)",
+    )
+    ap.add_argument(
+        "--normal-lambda",
+        type=float,
+        default=5e-2,
+        help="Weight for 2DGS normal consistency loss",
+    )
+    ap.add_argument(
+        "--normal-start-iter",
+        type=int,
+        default=7000,
+        help="Start normal consistency after this step",
+    )
+    ap.add_argument(
+        "--dist-loss",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="2DGS distortion loss (default: on with --2dgs)",
+    )
+    ap.add_argument(
+        "--dist-lambda",
+        type=float,
+        default=1e-2,
+        help="Weight for 2DGS distortion loss",
+    )
+    ap.add_argument(
+        "--dist-start-iter",
+        type=int,
+        default=3000,
+        help="Start distortion loss after this step",
     )
     ap.add_argument("--no-densify", action="store_true")
     ap.add_argument("--no-random-bkgd", action="store_true")
@@ -119,6 +162,18 @@ def main() -> None:
         max_steps = 500
         save_steps = (500,)
 
+    use_2dgs = bool(args.use_2dgs)
+    normal_loss = args.normal_loss if args.normal_loss is not None else use_2dgs
+    dist_loss = args.dist_loss if args.dist_loss is not None else use_2dgs
+    # Smoke is shorter than default start iters; pull regs in so they exercise.
+    normal_start = args.normal_start_iter
+    dist_start = args.dist_start_iter
+    if args.smoke and use_2dgs:
+        if normal_loss and normal_start >= max_steps:
+            normal_start = max(1, max_steps // 5)
+        if dist_loss and dist_start >= max_steps:
+            dist_start = max(1, max_steps // 10)
+
     cfg = TrainConfig(
         data=str(args.data),
         out=str(args.out),
@@ -146,6 +201,13 @@ def main() -> None:
         opacity_reg=args.opacity_reg,
         scale_reg=args.scale_reg,
         antialiased=args.antialiased,
+        use_2dgs=use_2dgs,
+        normal_loss=bool(normal_loss),
+        normal_lambda=args.normal_lambda,
+        normal_start_iter=normal_start,
+        dist_loss=bool(dist_loss),
+        dist_lambda=args.dist_lambda,
+        dist_start_iter=dist_start,
         densify=not args.no_densify,
         random_bkgd=not args.no_random_bkgd,
         device=args.device,
