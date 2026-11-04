@@ -218,8 +218,10 @@ python engines_cuda/run_train.py \
 - Normal / distortion losses default **on** with `--2dgs`
   (`--no-normal-loss` / `--no-dist-loss` to disable).
 - Weights / schedules: `--normal-lambda` (0.05), `--normal-start-iter` (7000),
-  `--dist-lambda` (0.01), `--dist-start-iter` (3000). Smoke pulls start iters
-  into the short run automatically.
+  `--dist-lambda` (0.01), `--dist-start-iter` (3000). Smoke keeps those
+  starts (does not pull them into 500 steps - that caused NaN blow-ups).
+- Disk thickness: `scale_2` frozen at `1e-6`; exported PLY omits `scale_2` so
+  Assimp tags `GaussianLayout=2dgs` (like supersplat_issue117).
 - `DefaultStrategy` densifies on `gradient_2dgs` (not `means2d`).
 - Official TSDF mesh extract from 2DGS renders is still roadmap; current
   `export/mesh_from_ckpt.py` (Open3D Poisson) still works on the PLY/ckpt.

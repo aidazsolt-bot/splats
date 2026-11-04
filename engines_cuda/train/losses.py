@@ -75,6 +75,12 @@ def normal_consistency(
         rn = rn.unsqueeze(0)
         sn = sn.unsqueeze(0)
         a = a.unsqueeze(0)
+    # gsplat can emit NaNs in normals_from_depth (upstream #1100); sanitize.
+    rn = torch.nan_to_num(rn, nan=0.0, posinf=0.0, neginf=0.0)
+    sn = torch.nan_to_num(sn, nan=0.0, posinf=0.0, neginf=0.0)
+    rn = F.normalize(rn, dim=-1, eps=1e-6)
+    sn = F.normalize(sn, dim=-1, eps=1e-6)
     # Match gsplat simple_trainer_2dgs: detach alpha mask onto surface normals.
     sn = sn * a.detach().unsqueeze(-1)
-    return (1.0 - (rn * sn).sum(dim=-1)).mean()
+    err = 1.0 - (rn * sn).sum(dim=-1)
+    return torch.nan_to_num(err, nan=0.0).mean()

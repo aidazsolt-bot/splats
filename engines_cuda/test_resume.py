@@ -231,6 +231,26 @@ class CudaResumeTests(unittest.TestCase):
             self.assertLessEqual(saved["means"].shape[0], 22)
             self.assertEqual(saved["strategy_state"]["binoms"].device.type, "cpu")
 
+    def test_2dgs_ply_omits_scale_2(self):
+        from export.ply import export_gsplat_ply
+
+        with tempfile.TemporaryDirectory(dir=ROOT.parent) as tmp:
+            n = 3
+            path = Path(tmp) / "disk.ply"
+            export_gsplat_ply(
+                path,
+                means=torch.zeros(n, 3),
+                scales_log=torch.zeros(n, 3),
+                quats=torch.tensor([[1.0, 0, 0, 0]]).repeat(n, 1),
+                opacities_logit=torch.zeros(n),
+                colors_dc=torch.zeros(n, 3),
+                layout_2dgs=True,
+            )
+            header = path.read_bytes().split(b"end_header\n", 1)[0].decode()
+            self.assertIn("property float scale_0", header)
+            self.assertIn("property float scale_1", header)
+            self.assertNotIn("property float scale_2", header)
+
     def test_2dgs_contiguous_grad_patch_contigues_bwd_grads(self):
         import train.gsplat_2dgs_patch as patch_mod
 

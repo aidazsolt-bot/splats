@@ -497,6 +497,23 @@ def _pack_ckpt(
     return payload
 
 
+# 2DGS disks: keep log(scale_z) tiny and frozen (hbb1 / Assimp scale_0/1 only).
+_2DGS_SCALE_Z_LOG = math.log(1e-6)
+
+
+def _clamp_2dgs_disk_thickness(model: GaussianModel) -> None:
+    """Force planar surfels: scale_2 stays at ~1e-6 linear, not optimized."""
+    with torch.no_grad():
+        model.scales.data[:, 2] = _2DGS_SCALE_Z_LOG
+
+
+def _params_finite(model: GaussianModel) -> bool:
+    for p in model.parameters_dict().values():
+        if not torch.isfinite(p).all():
+            return False
+    return True
+
+
 def _save_cuda_ckpt(
     out: Path, cfg: TrainConfig, model: GaussianModel, step: int, optimizers: dict,
     named: bool, strategy_state: Optional[dict] = None,
@@ -514,6 +531,7 @@ def _save_cuda_ckpt(
             model.opacities,
             model.colors_dc,
             model.colors_rest,
+            layout_2dgs=cfg.use_2dgs,
         )
         print(f"  saved {ply} + checkpoint")
     else:
@@ -624,6 +642,14 @@ def train(cfg: TrainConfig) -> Path:
         model = GaussianModel(init, sh_degree=cfg.sh_degree)
         optimizers = _build_optimizers(model, cfg, init.scene_scale)
 
+    if cfg.use_2dgs:
+        _clamp_2dgs_disk_thickness(model)
+        print(
+            "[startup] 2DGS: freezing scale_2 at 1e-6 (planar surfel); "
+            "PLY export omits scale_2 for Assimp GaussianLayout=2dgs",
+            flush=True,
+        )
+
     params = model.parameters_dict()
     strategy_impl = None
     strategy_state = None
@@ -727,6 +753,9 @@ def train(cfg: TrainConfig) -> Path:
             render_normals = None
             surf_normals = None
             render_distort = None
+            want_dist = (
+                cfg.use_2dgs and cfg.dist_loss and step > cfg.dist_start_iter
+            )
             if cfg.use_2dgs:
                 (
                     colors,
@@ -738,7 +767,7 @@ def train(cfg: TrainConfig) -> Path:
                 ) = _rasterize_2dgs(
                     model, viewmat, K, w, h, active_sh, cfg.near, cfg.far,
                     absgrad=use_absgrad,
-                    distloss=cfg.dist_loss,
+                    distloss=want_dist,
                 )
             else:
                 colors, alphas, info = _rasterize(
@@ -768,20 +797,37 @@ def train(cfg: TrainConfig) -> Path:
             loss_d = None
             if cfg.use_2dgs and cfg.normal_loss and step > cfg.normal_start_iter:
                 loss_n = normal_consistency(render_normals, surf_normals, alphas)
-                loss = loss + cfg.normal_lambda * loss_n
-            if cfg.use_2dgs and cfg.dist_loss and step > cfg.dist_start_iter:
-                loss_d = render_distort.mean()
-                loss = loss + cfg.dist_lambda * loss_d
+                if torch.isfinite(loss_n):
+                    loss = loss + cfg.normal_lambda * loss_n
+                else:
+                    loss_n = None
+            if want_dist:
+                loss_d = torch.nan_to_num(render_distort, nan=0.0).mean()
+                if torch.isfinite(loss_d):
+                    loss = loss + cfg.dist_lambda * loss_d
+                else:
+                    loss_d = None
             if cfg.opacity_reg > 0:
                 loss = loss + cfg.opacity_reg * torch.sigmoid(model.opacities).mean()
             if cfg.scale_reg > 0:
-                loss = loss + cfg.scale_reg * torch.exp(model.scales).mean()
+                # 2DGS: only regularize in-plane scales (axis 0/1).
+                sc = model.scales[:, :2] if cfg.use_2dgs else model.scales
+                loss = loss + cfg.scale_reg * torch.exp(sc).mean()
+
+            if not torch.isfinite(loss):
+                print(f"  warn: non-finite loss at step={step}; skip update", flush=True)
+                for opt in optimizers.values():
+                    opt.zero_grad(set_to_none=True)
+                continue
 
             for opt in optimizers.values():
                 opt.zero_grad(set_to_none=True)
             if cfg.densify and cfg.strategy == "default":
                 strategy_impl.step_pre_backward(params, optimizers, strategy_state, step, info)
             loss.backward()
+
+            if cfg.use_2dgs and model.scales.grad is not None:
+                model.scales.grad[:, 2] = 0
 
             # The legacy strategy accumulates 3D means gradients.
             if cfg.strategy == "legacy" and model.means.grad is not None:
@@ -798,14 +844,38 @@ def train(cfg: TrainConfig) -> Path:
                 opt.step()
             means_sched.step()
 
+            if cfg.use_2dgs:
+                _clamp_2dgs_disk_thickness(model)
+                if not _params_finite(model):
+                    print(
+                        f"  warn: NaN params after step={step}; stop densify this step",
+                        flush=True,
+                    )
+                    # Soft recovery: nan_to_num means/quats/scales_xy/opac
+                    with torch.no_grad():
+                        model.means.data = torch.nan_to_num(model.means.data, nan=0.0)
+                        model.quats.data = torch.nan_to_num(model.quats.data, nan=0.0)
+                        model.quats.data[:, 0] = model.quats.data[:, 0].clamp_min(1e-3)
+                        model.scales.data[:, :2] = torch.nan_to_num(
+                            model.scales.data[:, :2], nan=-5.0
+                        )
+                        model.opacities.data = torch.nan_to_num(
+                            model.opacities.data, nan=-2.0
+                        )
+                        _clamp_2dgs_disk_thickness(model)
+
             if cfg.densify and cfg.strategy == "default":
                 strategy_impl.step_post_backward(params, optimizers, strategy_state, step, info)
                 _sync_model_from_params(model, params)
+                if cfg.use_2dgs:
+                    _clamp_2dgs_disk_thickness(model)
             elif cfg.densify and cfg.strategy == "mcmc":
                 strategy_impl.step_post_backward(
                     params, optimizers, strategy_state, step, info, lr=lr_means
                 )
                 _sync_model_from_params(model, params)
+                if cfg.use_2dgs:
+                    _clamp_2dgs_disk_thickness(model)
             elif (
                 cfg.strategy == "legacy"
                 and cfg.densify

@@ -1,4 +1,4 @@
-"""Export trained Gaussians to 3DGS / Postshot-compatible PLY."""
+"""Export trained Gaussians to 3DGS / Postshot / 2DGS-compatible PLY."""
 
 from __future__ import annotations
 
@@ -19,8 +19,13 @@ def export_gsplat_ply(
     opacities_logit: torch.Tensor,
     colors_dc: torch.Tensor,
     colors_rest: Optional[torch.Tensor] = None,
+    layout_2dgs: bool = False,
 ) -> Path:
-    """Write binary_little_endian PLY with SH degree 3 layout (45 rest coeffs)."""
+    """Write binary_little_endian PLY with SH degree 3 layout (45 rest coeffs).
+
+    layout_2dgs=True omits scale_2 so Assimp tags GaussianLayout=2dgs
+    (planar surfel; matches hbb1 / supersplat_issue117 style).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -37,9 +42,7 @@ def export_gsplat_ply(
     if colors_rest is not None:
         cr = colors_rest.detach().float().cpu().numpy()
         # (N, K, 3) -> flatten as f_rest_i for i in 0..44 matching 3DGS (band-major RGB)
-        # 3DGS stores rest as (N, 3, (d+1)^2-1) then transpose; common export flattens K*3
         k = min(cr.shape[1], 15)
-        # flatten as rest_{i*3+c}
         flat = cr[:, :k, :].reshape(n, -1)
         rest[:, : flat.shape[1]] = flat
 
@@ -61,17 +64,21 @@ def export_gsplat_ply(
     ]
     for i in range(45):
         header.append(f"property float f_rest_{i}")
+    header.append("property float opacity")
+    header.append("property float scale_0")
+    header.append("property float scale_1")
+    if not layout_2dgs:
+        header.append("property float scale_2")
     header += [
-        "property float opacity",
-        "property float scale_0",
-        "property float scale_1",
-        "property float scale_2",
         "property float rot_0",
         "property float rot_1",
         "property float rot_2",
         "property float rot_3",
         "end_header",
     ]
+
+    n_floats = 61 if layout_2dgs else 62
+    pack = struct.Struct(f"<{n_floats}f")
 
     with path.open("wb") as f:
         f.write(("\n".join(header) + "\n").encode("ascii"))
@@ -89,7 +96,10 @@ def export_gsplat_ply(
             ]
             vals.extend(float(x) for x in rest[i])
             vals.append(float(opac_np[i]))
-            vals.extend(float(x) for x in scales_np[i])
+            vals.append(float(scales_np[i, 0]))
+            vals.append(float(scales_np[i, 1]))
+            if not layout_2dgs:
+                vals.append(float(scales_np[i, 2]))
             vals.extend(float(x) for x in quats_np[i])
-            f.write(struct.pack("<62f", *vals))
+            f.write(pack.pack(*vals))
     return path

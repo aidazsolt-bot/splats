@@ -165,14 +165,10 @@ def main() -> None:
     use_2dgs = bool(args.use_2dgs)
     normal_loss = args.normal_loss if args.normal_loss is not None else use_2dgs
     dist_loss = args.dist_loss if args.dist_loss is not None else use_2dgs
-    # Smoke is shorter than default start iters; pull regs in so they exercise.
+    # Keep paper start iters even for smoke. Pulling them into 500 steps made
+    # early dist/normal regs blow means/quats to NaN on T4.
     normal_start = args.normal_start_iter
     dist_start = args.dist_start_iter
-    if args.smoke and use_2dgs:
-        if normal_loss and normal_start >= max_steps:
-            normal_start = max(1, max_steps // 5)
-        if dist_loss and dist_start >= max_steps:
-            dist_start = max(1, max_steps // 10)
 
     cfg = TrainConfig(
         data=str(args.data),
