@@ -231,6 +231,43 @@ class CudaResumeTests(unittest.TestCase):
             self.assertLessEqual(saved["means"].shape[0], 22)
             self.assertEqual(saved["strategy_state"]["binoms"].device.type, "cpu")
 
+    def test_2dgs_contiguous_grad_patch_contigues_bwd_grads(self):
+        import train.gsplat_2dgs_patch as patch_mod
+
+        calls = []
+
+        def orig_make(name):
+            def fn(*args, **kwargs):
+                calls.append((name, args))
+                return name
+
+            return fn
+
+        fake_wrapper = SimpleNamespace(_make_lazy_cuda_func=orig_make)
+        fake_cuda = SimpleNamespace(_wrapper=fake_wrapper)
+        fake_gsplat = SimpleNamespace(cuda=fake_cuda)
+        patch_mod._PATCHED = False
+        with patch.dict(
+            sys.modules,
+            {
+                "gsplat": fake_gsplat,
+                "gsplat.cuda": fake_cuda,
+                "gsplat.cuda._wrapper": fake_wrapper,
+            },
+        ):
+            patch_mod.install_2dgs_contiguous_grad_patch()
+            self.assertTrue(patch_mod._PATCHED)
+            patch_mod.install_2dgs_contiguous_grad_patch()
+            bwd = fake_wrapper._make_lazy_cuda_func("projection_2dgs_fused_bwd")
+            other = fake_wrapper._make_lazy_cuda_func("something_else")
+            t = torch.randn(4, 3)[:, :2]
+            self.assertFalse(t.is_contiguous())
+            bwd(torch.zeros(1), t, True)
+            other(t, False)
+        self.assertEqual(calls[0][0], "projection_2dgs_fused_bwd")
+        self.assertTrue(calls[0][1][1].is_contiguous())
+        self.assertFalse(calls[1][1][0].is_contiguous())
+
     def test_2dgs_uses_surfel_raster_and_persists_flag(self):
         with tempfile.TemporaryDirectory(dir=ROOT.parent) as tmp:
             cfg = trainer.TrainConfig(

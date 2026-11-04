@@ -321,6 +321,11 @@ def _rasterize_2dgs(
     """
     from gsplat.rendering import rasterization_2dgs
 
+    from train.gsplat_2dgs_patch import install_2dgs_contiguous_grad_patch
+
+    # gsplat#1098: normal/dist losses yield non-contiguous v_depths without this.
+    install_2dgs_contiguous_grad_patch()
+
     means = model.means
     # rasterization_2dgs normalizes quats internally; keep consistent with 3D path
     quats = model.quats
@@ -355,7 +360,7 @@ def _rasterize_2dgs(
         absgrad=absgrad,
         distloss=distloss,
     )
-    rgb = render_colors[..., :3]
+    rgb = render_colors[..., :3] if render_colors.shape[-1] > 3 else render_colors
     return (
         rgb,
         render_alphas.squeeze(-1),
